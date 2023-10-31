@@ -11,79 +11,59 @@ struct CAN_PACKAGE {
   unsigned long lastMillis;
 };
 
+struct IGNITION {
+  unsigned long id = 0x0F6;
+  int byteNum = 0;
+  byte byteValue = 0x08;
+} IGNITION;
+
 struct BUTTON {
-  byte id;
+  unsigned long id;
   int byteNum;
   byte byteValue;
   int resistance;
 };
 
-BUTTON VOL_UP             = {0x21F, 0, 0x08, 0};
-BUTTON VOL_DOWN           = {0x21F, 0, 0x04, 2};
-BUTTON MUTE               = {0x21F, 0, 0x0C, 3};
-BUTTON NEXT               = {0x21F, 0, 0x40, 4};
-BUTTON PREVIUOS           = {0x21F, 0, 0x80, 5};
+struct SCROLL {
+  unsigned long id;
+  int byteNum;
+  int up;
+  int down;
+};
+
+SCROLL SCROLL;//             = {0x0A2, 0, 20, 23};
+
 BUTTON LIST               = {0x21F, 0, 0x01, 0};
+BUTTON VOL_UP             = {0x21F, 0, 0x08, 3};
+BUTTON VOL_DOWN           = {0x21F, 0, 0x04, 4};
+BUTTON MUTE               = {0x21F, 0, 0x0C, 5};
+BUTTON NEXT               = {0x21F, 0, 0x40, 6};
+BUTTON PREVIUOS           = {0x21F, 0, 0x80, 7};
 
-BUTTON BACK               = {0x0A2, 1, 0x01, 7};
-BUTTON HOME               = {0x0A2, 1, 0x01, 8};
-BUTTON SOURCE             = {0x0A2, 1, 0x01, 2};
-BUTTON SCROLL_PRESSED     = {0x0A2, 1, 0x01, 5};
-BUTTON SCROLL_DOWN        = {0x0A2, 0, NULL, 6};
-BUTTON SCROLL_UP          = {0x0A2, 0, NULL, 7};
+BUTTON SOURCE             = {0x0A2, 1, 0x04, 2};
+BUTTON BACK               = {0x0A2, 1, 0x10, 8};
+BUTTON HOME               = {0x0A2, 1, 0x08, 10};
+BUTTON SCROLL_PRESSED     = {0x0A2, 1, 0xA0, 12};
+BUTTON PHONE              = {0x0A2, 2, 0x80, 14};
 
-BUTTON PHONE              = {0x0A2, 2, 0x80, 10};
 BUTTON VOICE_ASSIST       = {0x221, 0, 0x01, 4};
 BUTTON NIGHT_MODE         = {0x036, 3, 0x36, 17};
 
-BUTTON WHEEL_BUTTON[3] = {
+BUTTON WHEEL_BUTTON[] = {
   // VOL_UP, 
   // VOL_DOWN, 
   // MUTE, 
   // NEXT, 
   // PREVIUOS, 
-  LIST,
   // BACK, 
   // HOME, 
-  SOURCE, 
   // SCROLL_PRESSED, 
-  // SCROLL_DOWN, 
-  // SCROLL_UP,
   // PHONE, 
+  // NIGHT_MODE,
+  LIST,
+  SOURCE, 
   VOICE_ASSIST
-  // NIGHT_MODE
 };
-
-CAN_PACKAGE dataPackages[3] = {
-  {0x1A5, 1, {0x14}, 500, 0},                                       // set volume
-  {0x165, 4, {0xC0, 0x00, 0x40, 0x00}, 100, 0},                     // enable amplifier
-  {0x1E5, 7, {0x3F, 0x3F, 0x43, 0x3F, 0x44, 0x47, 0x40}, 500, 0}    // set equalizer
-};
-
-int dataPackagesCount = 3;
-
-
-// buttons resistance configuration
-
-/*
-
-// int BTN_VOL_UP = 0;
-// int BTN_VOL_DOWN = 2;
-// int BTN_MUTE = 3;
-// int BTN_NEXT = 4;
-// int BTN_PREVIUOS = 5;
-int BTN_LIST = 0;
-// int BTN_BACK = 7;
-// int BTN_HOME = 8;
-int BTN_SOURCE = 2;
-// int BTN_PHONE = 10;
-int BTN_VOICE_ASSIST = 4;
-// int BTN_NIGHT_MODE = 17;
-int BTN_SCROLL_PRESSED = 5;
-int BTN_SCROLL_DOWN = 6;
-int BTN_SCROLL_UP = 7;
-
-*/
 
 // button state
 int BTN_PRESSED = -1;
@@ -91,16 +71,25 @@ int BTN_RELEASED = 32;
 
 unsigned long btnPressedOn = 0;
 int btnReleaseAfter = 150;
-byte scrollWheelPosition;
+byte scrollPosition;
 
+int buttonsCount = sizeof(WHEEL_BUTTON) / sizeof(BUTTON);
+
+CAN_PACKAGE CAN_PACKAGES[] = {
+  {0x1A5, 1, {0x14}, 500, 0},                                       // set volume
+  {0x165, 4, {0xC0, 0x00, 0x40, 0x00}, 100, 0},                     // enable amplifier
+  {0x1E5, 7, {0x3F, 0x3F, 0x43, 0x3F, 0x44, 0x47, 0x40}, 500, 0}    // set equalizer
+};
+
+int dataPackagesCount = sizeof(CAN_PACKAGES) / sizeof(CAN_PACKAGE);
+
+bool sleep = true;
 int sleepDelay = 3000;
 unsigned long sleepReceivedOn = 0;
-const int serialMaximumInput = 50;
 
 unsigned long rxId;
 byte len;
 byte rxBuf[8];
-bool sleep = false;
 
 DigiPot POTENTIOMETER(4,5,6);
 
@@ -128,7 +117,7 @@ void setup()
     Serial.print("CAN1: Init OK!\r\n");
     CAN1.setMode(MCP_NORMAL);
   } else Serial.print("CAN1: Init Fail!!!\r\n");
-  
+
   loadConfig();
 }
 
@@ -172,11 +161,11 @@ void parseConfig(String config){
   byte data[8];
   stringSplit(dataParts, parts[1], ' ');
 
-  for (int i = 0; i < dataPackages[packageIndex].dlc; i++){
+  for (int i = 0; i < CAN_PACKAGES[packageIndex].dlc; i++){
     data[i] = parseAsHex(dataParts[i]);
   }
 
-  memcpy(dataPackages[packageIndex].data, data, 8);
+  memcpy(CAN_PACKAGES[packageIndex].data, data, 8);
 
   saveConfig();
 }
@@ -185,7 +174,7 @@ int getPackageIndex(unsigned long id){
   int index = -1;
 
   for (int i = 0; i < dataPackagesCount; i++){
-    if(id == dataPackages[i].id){
+    if(id == CAN_PACKAGES[i].id){
       index = i;
 
       break;
@@ -199,7 +188,7 @@ void saveConfig(){
   int address = 0;
 
   for (int i = 0; i < dataPackagesCount; i++){
-    EEPROM.put(address, dataPackages[i]);
+    EEPROM.put(address, CAN_PACKAGES[i]);
     address += sizeof(CAN_PACKAGE);
   }
 
@@ -218,7 +207,7 @@ void loadConfig(){
     index = getPackageIndex(loadedData.id);
 
     if (index >= 0){
-      memcpy(dataPackages[i].data, loadedData.data, 8);
+      memcpy(CAN_PACKAGES[i].data, loadedData.data, 8);
     }
 
     address += sizeof(CAN_PACKAGE);
@@ -231,18 +220,18 @@ void getConfig(){
   for (int i = 0; i < dataPackagesCount; i++){
     String data = "";
 
-    for (int d = 0; d < dataPackages[i].dlc; d++){
+    for (int d = 0; d < CAN_PACKAGES[i].dlc; d++){
       data += " 0x";
 
-      if (dataPackages[i].data[d] < 16) 
+      if (CAN_PACKAGES[i].data[d] < 16) 
         data += "0";
       
-      data += String(dataPackages[i].data[d], HEX);
+      data += String(CAN_PACKAGES[i].data[d], HEX);
     }
 
     data.trim();
 
-    Serial.println("0x" + String(dataPackages[i].id, HEX) + ";" + data);
+    Serial.println("0x" + String(CAN_PACKAGES[i].id, HEX) + ";" + data);
   }
 }
 
@@ -256,16 +245,16 @@ bool isForbidden(unsigned long id){
 
 void sendData(){
   for (int i = 0; i < dataPackagesCount; i++){
-    if(millis() - dataPackages[i].lastMillis >= dataPackages[i].period){
-      CAN0.sendMsgBuf(dataPackages[i].id, 0, dataPackages[i].dlc, dataPackages[i].data);
-      dataPackages[i].lastMillis = millis();
+    if(millis() - CAN_PACKAGES[i].lastMillis >= CAN_PACKAGES[i].period){
+      CAN0.sendMsgBuf(CAN_PACKAGES[i].id, 0, CAN_PACKAGES[i].dlc, CAN_PACKAGES[i].data);
+      CAN_PACKAGES[i].lastMillis = millis();
     }
   }
 }
 
 void checkIgnition() {
-  if (rxId == 0x0F6) {
-    if ((rxBuf[0] & 0x08) && sleep == true) {
+  if (rxId == IGNITION.id) {
+    if ((rxBuf[IGNITION.byteNum] & IGNITION.byteValue) && (sleep == true || sleepReceivedOn != 0)) {
       sleep = false;
       sleepReceivedOn = 0;
 
@@ -276,7 +265,7 @@ void checkIgnition() {
     
     if (sleep) return;
 
-    if ((rxBuf[0] & 0x08) && sleep == false && sleepReceivedOn == 0){
+    if (!(rxBuf[IGNITION.byteNum] & IGNITION.byteValue) && sleep == false && sleepReceivedOn == 0){
       sleepReceivedOn = millis();
     }
   }
@@ -292,12 +281,11 @@ void checkIgnition() {
 }
 
 void processKey() {
-
   if (!(rxId == 0x21F || rxId == 0x0A2 || rxId == 0x221 || rxId == 0x036)){
     return;
   }
 
-  for (int i = 0; i < sizeof (WHEEL_BUTTON) / sizeof (BUTTON); i++){
+  for (int i = 0; i < buttonsCount; i++) {
     if (rxId == WHEEL_BUTTON[i].id && rxBuf[WHEEL_BUTTON[i].byteNum] == WHEEL_BUTTON[i].byteValue) {
       pressKey(WHEEL_BUTTON[i].resistance);
       rxBuf[WHEEL_BUTTON[i].byteNum] = 0x00;
@@ -306,20 +294,22 @@ void processKey() {
     }
   }
 
-  if (rxId == 0x0A2) {
-    if (!scrollWheelPosition) {
-      scrollWheelPosition = rxBuf[0];
+  if (rxId == SCROLL.id) {
+    if (!scrollPosition) {
+      scrollPosition = rxBuf[SCROLL.byteNum];
     }
 
-    if (scrollWheelPosition != rxBuf[0]) {
-      if (rxBuf[0] > scrollWheelPosition){
-        pressKey(SCROLL_UP.resistance);
+    if (scrollPosition != rxBuf[SCROLL.byteNum]) {
+      if (rxBuf[SCROLL.byteNum] > scrollPosition){
+        pressKey(SCROLL.up);
       } else {
-        pressKey(SCROLL_DOWN.resistance);
+        pressKey(SCROLL.down);
       }
-      scrollWheelPosition = rxBuf[0];
-      rxBuf[0] = 0x00;
+      scrollPosition = rxBuf[SCROLL.byteNum];
+      rxBuf[SCROLL.byteNum] = 0x00;
     }
+
+    return;
   }
   
   // if no press detected for more than period - release key
@@ -351,8 +341,9 @@ void processIncomingData (const char * data)
   }
 }
 
-String processIncomingByte (const byte inByte)
+void processIncomingByte (const byte inByte)
 {
+  const int serialMaximumInput = 50;
   static char inputLine [serialMaximumInput];
   static unsigned int position = 0;
 
@@ -371,8 +362,6 @@ String processIncomingByte (const byte inByte)
         inputLine [position++] = inByte;
       break;
   }
-
-  return String();
 }
 
 void processCan(){
