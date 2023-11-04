@@ -75,16 +75,18 @@ byte scrollPosition;
 
 int buttonsCount = sizeof(WHEEL_BUTTON) / sizeof(BUTTON);
 
+CAN_PACKAGE CAN_VOLUME = {0x1A5, 1, {0x14}, 500, 0};
+
 CAN_PACKAGE CAN_PACKAGES[] = {
-  {0x1A5, 1, {0x14}, 500, 0},                                       // set volume
+  CAN_VOLUME,                                                       // set volume
   {0x165, 4, {0xC0, 0x00, 0x40, 0x00}, 100, 0},                     // enable amplifier
   {0x1E5, 7, {0x3F, 0x3F, 0x43, 0x3F, 0x44, 0x47, 0x40}, 500, 0}    // set equalizer
 };
 
 int dataPackagesCount = sizeof(CAN_PACKAGES) / sizeof(CAN_PACKAGE);
+bool useDynamicVolume = true;
 
-bool sleep = true;
-int sleepDelay = 3000;
+int sleepDelay = 2000;
 unsigned long sleepReceivedOn = 0;
 
 byte can1ToCan0BlockedPackages[] = {0x1A5, 0x165, 0x1E5}; // block amplifier related packages received from CAN adapter
@@ -213,6 +215,10 @@ void loadConfig(){
       memcpy(CAN_PACKAGES[i].data, loadedData.data, 8);
     }
 
+    if (loadedData.id == CAN_VOLUME.id){
+      memcpy(CAN_VOLUME.data, loadedData.data, 8);
+    }
+
     address += sizeof(CAN_PACKAGE);
   }
 
@@ -249,7 +255,11 @@ bool isForbidden(){
 void sendData(){
   for (int i = 0; i < dataPackagesCount; i++){
     if(millis() - CAN_PACKAGES[i].lastMillis >= CAN_PACKAGES[i].period){
-      CAN0.sendMsgBuf(CAN_PACKAGES[i].id, 0, CAN_PACKAGES[i].dlc, CAN_PACKAGES[i].data);
+      if (useDynamicVolume && CAN_PACKAGES[i].id == CAN_VOLUME.id){
+        CAN0.sendMsgBuf(CAN_VOLUME.id, 0, CAN_VOLUME.dlc, CAN_VOLUME.data);
+      } else {
+        CAN0.sendMsgBuf(CAN_PACKAGES[i].id, 0, CAN_PACKAGES[i].dlc, CAN_PACKAGES[i].data);
+      }
       CAN_PACKAGES[i].lastMillis = millis();
     }
   }
@@ -284,10 +294,6 @@ void checkIgnition(){
 }
 
 void processKey(){
-  // if (!(rxId == 0x21F || rxId == 0x0A2 || rxId == 0x221 || rxId == 0x036)){
-  //   return;
-  // }
-
   for (int i = 0; i < buttonsCount; i++){
     if (rxId == WHEEL_BUTTON[i].id && rxBuf[WHEEL_BUTTON[i].byteNum] == WHEEL_BUTTON[i].byteValue){
       pressKey(WHEEL_BUTTON[i].resistance);
@@ -365,6 +371,16 @@ void processIncomingByte (const byte inByte){
   }
 }
 
+void setDynamicVolume(){
+  if (!useDynamicVolume){
+    return;
+  }
+  
+  if (rxId == CAN_VOLUME.id && (rxBuf[0] >= 0 && rxBuf[0] <= 30)){
+    memcpy(CAN_VOLUME.data, rxBuf, 8);
+  }
+}
+
 void processCan(){
 
   if(!digitalRead(CAN0_INT)){
@@ -381,11 +397,13 @@ void processCan(){
   if (sleep) return;
 
   if (Serial.available()){
-    processIncomingByte (Serial.read());
+    processIncomingByte(Serial.read());
   }
   
   if(!digitalRead(CAN1_INT)){
     CAN1.readMsgBuf(&rxId, &len, rxBuf);
+
+    setDynamicVolume();
 
     if(!isForbidden()){
       CAN0.sendMsgBuf(rxId, 0, len, rxBuf);
