@@ -87,6 +87,9 @@ bool sleep = true;
 int sleepDelay = 3000;
 unsigned long sleepReceivedOn = 0;
 
+byte can1ToCan0BlockedPackages[] = {0x1A5, 0x165, 0x1E5}; // block amplifier related packages received from CAN adapter
+int can1ToCan0BlockedPackagesCount = sizeof(can1ToCan0BlockedPackages) / sizeof(byte);
+
 unsigned long rxId;
 byte len;
 byte rxBuf[8];
@@ -121,7 +124,7 @@ void setup()
   loadConfig();
 }
 
-void stringSplit(String * strs, String value, char separator) {
+void stringSplit(String * strs, String value, char separator){
   int count = 0;
 
   while (value.length() > 0)
@@ -235,10 +238,10 @@ void getConfig(){
   }
 }
 
-bool isForbidden(unsigned long id){
-  if (id == 0x165) return true;   // enable amplifier
-  if (id == 0x1E5) return true;   // equalizer
-  if (id == 0x1A5) return true;   // volume
+bool isForbidden(){
+  for (int i = 0; i < can1ToCan0BlockedPackagesCount; i++){
+    if (rxId == can1ToCan0BlockedPackages[i]) return true;
+  }
 
   return false;
 }
@@ -252,9 +255,9 @@ void sendData(){
   }
 }
 
-void checkIgnition() {
-  if (rxId == IGNITION.id) {
-    if ((rxBuf[IGNITION.byteNum] & IGNITION.byteValue) && (sleep == true || sleepReceivedOn != 0)) {
+void checkIgnition(){
+  if (rxId == IGNITION.id){
+    if ((rxBuf[IGNITION.byteNum] & IGNITION.byteValue) && (sleep == true || sleepReceivedOn != 0)){
       sleep = false;
       sleepReceivedOn = 0;
 
@@ -273,20 +276,20 @@ void checkIgnition() {
   if (sleepReceivedOn == 0 || sleep == true) return;
 
   // delay sleep
-  if (millis() - sleepReceivedOn > sleepDelay && sleep == false) {
+  if (millis() - sleepReceivedOn > sleepDelay && sleep == false){
     sleep = true;
 
     Serial.println("ignition off"); 
   }
 }
 
-void processKey() {
-  if (!(rxId == 0x21F || rxId == 0x0A2 || rxId == 0x221 || rxId == 0x036)){
-    return;
-  }
+void processKey(){
+  // if (!(rxId == 0x21F || rxId == 0x0A2 || rxId == 0x221 || rxId == 0x036)){
+  //   return;
+  // }
 
-  for (int i = 0; i < buttonsCount; i++) {
-    if (rxId == WHEEL_BUTTON[i].id && rxBuf[WHEEL_BUTTON[i].byteNum] == WHEEL_BUTTON[i].byteValue) {
+  for (int i = 0; i < buttonsCount; i++){
+    if (rxId == WHEEL_BUTTON[i].id && rxBuf[WHEEL_BUTTON[i].byteNum] == WHEEL_BUTTON[i].byteValue){
       pressKey(WHEEL_BUTTON[i].resistance);
       rxBuf[WHEEL_BUTTON[i].byteNum] = 0x00;
 
@@ -294,12 +297,12 @@ void processKey() {
     }
   }
 
-  if (rxId == SCROLL.id) {
-    if (!scrollPosition) {
+  if (rxId == SCROLL.id){
+    if (!scrollPosition){
       scrollPosition = rxBuf[SCROLL.byteNum];
     }
 
-    if (scrollPosition != rxBuf[SCROLL.byteNum]) {
+    if (scrollPosition != rxBuf[SCROLL.byteNum]){
       if (rxBuf[SCROLL.byteNum] > scrollPosition){
         pressKey(SCROLL.up);
       } else {
@@ -313,12 +316,12 @@ void processKey() {
   }
   
   // if no press detected for more than period - release key
-  if (millis() - btnPressedOn > btnReleaseAfter) {
+  if (millis() - btnPressedOn > btnReleaseAfter){
     pressKey(BTN_RELEASED);
   }
 }
 
-void pressKey(int key) {
+void pressKey(int key){
   btnPressedOn = millis();
 
   if (BTN_PRESSED != key)
@@ -330,8 +333,7 @@ void pressKey(int key) {
   }
 }
 
-void processIncomingData (const char * data)
- {
+void processIncomingData (const char * data){
   String line = String(data);
 
   if (line == "get config"){
@@ -341,8 +343,7 @@ void processIncomingData (const char * data)
   }
 }
 
-void processIncomingByte (const byte inByte)
-{
+void processIncomingByte (const byte inByte){
   const int serialMaximumInput = 50;
   static char inputLine [serialMaximumInput];
   static unsigned int position = 0;
@@ -386,8 +387,7 @@ void processCan(){
   if(!digitalRead(CAN1_INT)){
     CAN1.readMsgBuf(&rxId, &len, rxBuf);
 
-    if(!isForbidden(rxId))
-    {
+    if(!isForbidden()){
       CAN0.sendMsgBuf(rxId, 0, len, rxBuf);
     }
   }
