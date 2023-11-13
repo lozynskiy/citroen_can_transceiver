@@ -1,7 +1,8 @@
 #include <mcp_can.h>
 #include <SPI.h>
 #include <EEPROM.h>
-#include <DigiPotX9Cxxx.h>
+#include <GyverPower.h>
+#include <MCP41_Simple.h>
 
 struct CAN_PACKAGE {
   unsigned long id;
@@ -15,6 +16,9 @@ struct IGNITION {
   unsigned long id = 0x0F6;
   int byteNum = 0;
   byte byteValue = 0x08;
+  bool on = true;
+  int offDelay = 3000;
+  unsigned long switchedOffOn = 0;
 } IGNITION;
 
 struct BUTTON {
@@ -26,28 +30,29 @@ struct BUTTON {
 
 struct SCROLL {
   unsigned long id;
+  byte position;
   int byteNum;
   int up;
   int down;
 };
 
-SCROLL SCROLL;//             = {0x0A2, 0, 20, 23};
+SCROLL SCROLL;//             = {0x0A2, 0, 26, 29};
 
-BUTTON LIST               = {0x21F, 0, 0x01, 0};
+BUTTON LIST               = {0x21F, 0, 0x01, 2};
 BUTTON VOL_UP             = {0x21F, 0, 0x08, 3};
-BUTTON VOL_DOWN           = {0x21F, 0, 0x04, 4};
-BUTTON MUTE               = {0x21F, 0, 0x0C, 5};
-BUTTON NEXT               = {0x21F, 0, 0x40, 6};
-BUTTON PREVIUOS           = {0x21F, 0, 0x80, 7};
+BUTTON VOL_DOWN           = {0x21F, 0, 0x04, 6};
+BUTTON MUTE               = {0x21F, 0, 0x0C, 8};
+BUTTON NEXT               = {0x21F, 0, 0x40, 10};
+BUTTON PREVIUOS           = {0x21F, 0, 0x80, 12};
 
-BUTTON SOURCE             = {0x0A2, 1, 0x04, 2};
-BUTTON BACK               = {0x0A2, 1, 0x10, 8};
-BUTTON HOME               = {0x0A2, 1, 0x08, 10};
-BUTTON SCROLL_PRESSED     = {0x0A2, 1, 0xA0, 12};
-BUTTON PHONE              = {0x0A2, 2, 0x80, 14};
+BUTTON SOURCE             = {0x0A2, 1, 0x04, 4};
+BUTTON BACK               = {0x0A2, 1, 0x10, 14};
+BUTTON HOME               = {0x0A2, 1, 0x08, 16};
+BUTTON SCROLL_PRESSED     = {0x0A2, 1, 0xA0, 18};
+BUTTON PHONE              = {0x0A2, 2, 0x80, 21};
 
-BUTTON VOICE_ASSIST       = {0x221, 0, 0x01, 4};
-BUTTON NIGHT_MODE         = {0x036, 3, 0x36, 17};
+BUTTON VOICE_ASSIST       = {0x221, 0, 0x01, 6};
+BUTTON NIGHT_MODE         = {0x036, 3, 0x36, 23};
 
 BUTTON WHEEL_BUTTON[] = {
   // VOL_UP, 
@@ -65,47 +70,56 @@ BUTTON WHEEL_BUTTON[] = {
   VOICE_ASSIST
 };
 
-// button state
-int BTN_PRESSED = -1;
-int BTN_RELEASED = 32;
-
 unsigned long btnPressedOn = 0;
-int btnReleaseAfter = 150;
-byte scrollPosition;
+int btnReleaseDelay = 150;
 
 int buttonsCount = sizeof(WHEEL_BUTTON) / sizeof(BUTTON);
+int buttonState = 255;
+int buttonReleased = 255;
+
+CAN_PACKAGE CAN_VOLUME = {0x1A5, 1, {0x14}, 500, 0};
 
 CAN_PACKAGE CAN_PACKAGES[] = {
-  {0x1A5, 1, {0x14}, 500, 0},                                       // set volume
+  CAN_VOLUME,                                                       // set volume
   {0x165, 4, {0xC0, 0x00, 0x40, 0x00}, 100, 0},                     // enable amplifier
   {0x1E5, 7, {0x3F, 0x3F, 0x43, 0x3F, 0x44, 0x47, 0x40}, 500, 0}    // set equalizer
 };
 
 int dataPackagesCount = sizeof(CAN_PACKAGES) / sizeof(CAN_PACKAGE);
 
-bool sleep = true;
-int sleepDelay = 3000;
-unsigned long sleepReceivedOn = 0;
+// dynamic volume
+bool useDynamicVolume = false;
+int dynamicVolumeByteNum = 0;
 
-byte can1ToCan0BlockedPackages[] = {0x1A5, 0x165, 0x1E5}; // block amplifier related packages received from CAN adapter
+// power down option
+unsigned long lastActivityOn = 0;
+unsigned long powerDownDelay = 5000;
+
+unsigned long can1ToCan0BlockedPackages[] = {0x1A5, 0x165, 0x1E5}; // block amplifier related packages received from CAN adapter
 int can1ToCan0BlockedPackagesCount = sizeof(can1ToCan0BlockedPackages) / sizeof(byte);
 
+byte mcpState = MCP_NORMAL;
 unsigned long rxId;
 byte len;
 byte rxBuf[8];
 
-DigiPot POTENTIOMETER(4,5,6);
-
-MCP_CAN CAN0(9);                              // CAN0 interface usins CS on digital pin 2
+MCP_CAN CAN0(9);                            // CAN0 interface usins CS on digital pin 2
 MCP_CAN CAN1(10);                             // CAN1 interface using CS on digital pin 3
+MCP41_Simple Potentiometer;
 
-#define CAN0_INT 3    //define interrupt pin for CAN0 recieve buffer
-#define CAN1_INT 2    //define interrupt pin for CAN1 recieve buffer
+#define CAN0_INT 3              //define interrupt pin for CAN0 recieve buffer
+#define CAN1_INT 2              //define interrupt pin for CAN1 recieve buffer
+#define POT_CS 8                //digital potentiometer CS pin
 
 void setup()
 {
-  Serial.begin(115200);
-  
+  power.setSystemPrescaler(PRESCALER_2);
+  power.setSleepMode(POWERDOWN_SLEEP);
+  power.autoCalibrate();
+
+  Serial.begin(38400);
+  Potentiometer.begin(POT_CS);
+
   pinMode(CAN0_INT, INPUT_PULLUP);
   pinMode(CAN1_INT, INPUT_PULLUP);
   
@@ -113,6 +127,7 @@ void setup()
   if(CAN0.begin(MCP_ANY, CAN_125KBPS, MCP_8MHZ) == CAN_OK){
     Serial.print("CAN0: Init OK!\r\n");
     CAN0.setMode(MCP_NORMAL);
+    CAN0.setSleepWakeup(1);
   } else Serial.print("CAN0: Init Fail!!!\r\n");
   
   // init CAN1 bus, baudrate: 125k@8MHz
@@ -121,7 +136,10 @@ void setup()
     CAN1.setMode(MCP_NORMAL);
   } else Serial.print("CAN1: Init Fail!!!\r\n");
 
+  attachInterrupt(digitalPinToInterrupt(CAN0_INT), ISR_CAN, FALLING);
+
   loadConfig();
+  Potentiometer.setWiper(buttonReleased); 
 }
 
 void stringSplit(String * strs, String value, char separator){
@@ -213,6 +231,10 @@ void loadConfig(){
       memcpy(CAN_PACKAGES[i].data, loadedData.data, 8);
     }
 
+    if (loadedData.id == CAN_VOLUME.id){
+      memcpy(CAN_VOLUME.data, loadedData.data, 8);
+    }
+
     address += sizeof(CAN_PACKAGE);
   }
 
@@ -249,7 +271,11 @@ bool isForbidden(){
 void sendData(){
   for (int i = 0; i < dataPackagesCount; i++){
     if(millis() - CAN_PACKAGES[i].lastMillis >= CAN_PACKAGES[i].period){
-      CAN0.sendMsgBuf(CAN_PACKAGES[i].id, 0, CAN_PACKAGES[i].dlc, CAN_PACKAGES[i].data);
+      if (useDynamicVolume && CAN_PACKAGES[i].id == CAN_VOLUME.id){
+        CAN0.sendMsgBuf(CAN_VOLUME.id, CAN_VOLUME.dlc, CAN_VOLUME.data);
+      } else {
+        CAN0.sendMsgBuf(CAN_PACKAGES[i].id, CAN_PACKAGES[i].dlc, CAN_PACKAGES[i].data);
+      }
       CAN_PACKAGES[i].lastMillis = millis();
     }
   }
@@ -257,37 +283,33 @@ void sendData(){
 
 void checkIgnition(){
   if (rxId == IGNITION.id){
-    if ((rxBuf[IGNITION.byteNum] & IGNITION.byteValue) && (sleep == true || sleepReceivedOn != 0)){
-      sleep = false;
-      sleepReceivedOn = 0;
+    if ((rxBuf[IGNITION.byteNum] & IGNITION.byteValue) && (IGNITION.on == false || IGNITION.switchedOffOn != 0)){
+      IGNITION.on = true;
+      IGNITION.switchedOffOn = 0;
 
       Serial.println("ignition on"); 
 
       return;
     }
     
-    if (sleep) return;
+    if (!IGNITION.on) return;
 
-    if (!(rxBuf[IGNITION.byteNum] & IGNITION.byteValue) && sleep == false && sleepReceivedOn == 0){
-      sleepReceivedOn = millis();
+    if (!(rxBuf[IGNITION.byteNum] & IGNITION.byteValue) && IGNITION.on == true && IGNITION.switchedOffOn == 0){
+      IGNITION.switchedOffOn = millis();
     }
   }
 
-  if (sleepReceivedOn == 0 || sleep == true) return;
+  if (IGNITION.switchedOffOn == 0 || IGNITION.on == false) return;
 
   // delay sleep
-  if (millis() - sleepReceivedOn > sleepDelay && sleep == false){
-    sleep = true;
+  if (millis() - IGNITION.switchedOffOn > IGNITION.offDelay && IGNITION.on == true){
+    IGNITION.on = false;
 
     Serial.println("ignition off"); 
   }
 }
 
 void processKey(){
-  // if (!(rxId == 0x21F || rxId == 0x0A2 || rxId == 0x221 || rxId == 0x036)){
-  //   return;
-  // }
-
   for (int i = 0; i < buttonsCount; i++){
     if (rxId == WHEEL_BUTTON[i].id && rxBuf[WHEEL_BUTTON[i].byteNum] == WHEEL_BUTTON[i].byteValue){
       pressKey(WHEEL_BUTTON[i].resistance);
@@ -298,38 +320,38 @@ void processKey(){
   }
 
   if (rxId == SCROLL.id){
-    if (!scrollPosition){
-      scrollPosition = rxBuf[SCROLL.byteNum];
+    if (!SCROLL.position){
+      SCROLL.position = rxBuf[SCROLL.byteNum];
     }
 
-    if (scrollPosition != rxBuf[SCROLL.byteNum]){
-      if (rxBuf[SCROLL.byteNum] > scrollPosition){
+    if (SCROLL.position != rxBuf[SCROLL.byteNum]){
+      if (rxBuf[SCROLL.byteNum] > SCROLL.position){
         pressKey(SCROLL.up);
       } else {
         pressKey(SCROLL.down);
       }
-      scrollPosition = rxBuf[SCROLL.byteNum];
+      SCROLL.position = rxBuf[SCROLL.byteNum];
       rxBuf[SCROLL.byteNum] = 0x00;
-    }
 
-    return;
+      return;
+    }
   }
   
   // if no press detected for more than period - release key
-  if (millis() - btnPressedOn > btnReleaseAfter){
-    pressKey(BTN_RELEASED);
+  if (millis() - btnPressedOn > btnReleaseDelay){
+    pressKey(buttonReleased);
   }
 }
 
 void pressKey(int key){
   btnPressedOn = millis();
 
-  if (BTN_PRESSED != key)
+  if (buttonState != key)
   {
-    BTN_PRESSED = key;
-    POTENTIOMETER.set(BTN_PRESSED);
+    buttonState = key;
 
-    Serial.println("pressed key: " + String(BTN_PRESSED));
+    Potentiometer.setWiper(key);
+    Serial.println("pressed key: " + String(key));
   }
 }
 
@@ -365,30 +387,44 @@ void processIncomingByte (const byte inByte){
   }
 }
 
+void setDynamicVolume(){
+  if (!useDynamicVolume){
+    return;
+  }
+  
+  if (rxId == CAN_VOLUME.id && (rxBuf[dynamicVolumeByteNum] >= 0 && rxBuf[dynamicVolumeByteNum] <= 30) && rxBuf[dynamicVolumeByteNum] != CAN_VOLUME.data[dynamicVolumeByteNum]){
+    CAN_VOLUME.data[dynamicVolumeByteNum] = rxBuf[dynamicVolumeByteNum];
+  }
+}
+
 void processCan(){
 
   if(!digitalRead(CAN0_INT)){
+    lastActivityOn = millis();
+
     CAN0.readMsgBuf(&rxId, &len, rxBuf);
     checkIgnition();
 
-    if (sleep) return;
+    if (!IGNITION.on) return;
 
     processKey();
 
-    CAN1.sendMsgBuf(rxId, 0, len, rxBuf);
+    CAN1.sendMsgBuf(rxId, len, rxBuf);
   }
 
-  if (sleep) return;
+  if (!IGNITION.on) return;
 
   if (Serial.available()){
-    processIncomingByte (Serial.read());
+    processIncomingByte(Serial.read());
   }
   
   if(!digitalRead(CAN1_INT)){
     CAN1.readMsgBuf(&rxId, &len, rxBuf);
 
+    setDynamicVolume();
+
     if(!isForbidden()){
-      CAN0.sendMsgBuf(rxId, 0, len, rxBuf);
+      CAN0.sendMsgBuf(rxId, len, rxBuf);
     }
   }
 
@@ -397,4 +433,28 @@ void processCan(){
 
 void loop(){
   processCan();
+  powerDown();
+}
+
+void powerDown(){
+  if (millis() - lastActivityOn > powerDownDelay && digitalRead(CAN0_INT)) {
+    Serial.println("power down");
+    Serial.flush();
+
+    CAN1.setMode(MCP_SLEEP);
+    CAN0.setMode(MCP_SLEEP);
+    mcpState = MCP_SLEEP;
+
+    power.sleep(SLEEP_FOREVER);
+  }
+}
+
+static void ISR_CAN(){
+	if (mcpState == MCP_SLEEP){
+    CAN1.setMode(MCP_NORMAL); 
+    CAN0.setMode(MCP_NORMAL);
+
+    mcpState = MCP_NORMAL;
+    lastActivityOn = millis();
+  }
 }
