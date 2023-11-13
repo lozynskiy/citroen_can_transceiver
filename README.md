@@ -6,7 +6,7 @@ Additionally added the possibility to remap wheel keys.
 Used libraries:
 
 https://github.com/coryjfowler/MCP_CAN_lib
-
-https://github.com/AlexGyver/PCdisplay_v3/tree/master/libraries/DigiPotX9Cxxx
+https://github.com/GyverLibs/GyverPower
+https://github.com/sleemanj/MCP41_Simple
 
 Additional information: https://driver.top/exp/498635
