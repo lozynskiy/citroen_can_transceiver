@@ -36,7 +36,7 @@ struct SCROLL {
   int down;
 };
 
-SCROLL SCROLL;//             = {0x0A2, 0, 26, 29};
+SCROLL SCROLL;//             = {0x0A2, NULL, 0, 26, 29};
 
 BUTTON LIST               = {0x21F, 0, 0x01, 2};
 BUTTON VOL_UP             = {0x21F, 0, 0x08, 3};
@@ -450,7 +450,7 @@ void powerDown(){
 }
 
 static void ISR_CAN(){
-	if (mcpState == MCP_SLEEP){
+  if (mcpState == MCP_SLEEP){
     CAN1.setMode(MCP_NORMAL); 
     CAN0.setMode(MCP_NORMAL);
 
