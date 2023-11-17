@@ -25,7 +25,10 @@ struct BUTTON {
   unsigned long id;
   int byteNum;
   byte byteValue;
-  int resistance;
+  unsigned long pressedOn;
+  int longPressTime;
+  int shortPressResistance;
+  int longPressResistance;
 };
 
 struct SCROLL {
@@ -36,23 +39,23 @@ struct SCROLL {
   int down;
 };
 
-SCROLL SCROLL;//             = {0x0A2, NULL, 0, 26, 29};
+SCROLL SCROLL             = {0x0A2, NULL, 0, 102, 113};
 
-BUTTON LIST               = {0x21F, 0, 0x01, 2};
-BUTTON VOL_UP             = {0x21F, 0, 0x08, 3};
-BUTTON VOL_DOWN           = {0x21F, 0, 0x04, 6};
-BUTTON MUTE               = {0x21F, 0, 0x0C, 8};
-BUTTON NEXT               = {0x21F, 0, 0x40, 10};
-BUTTON PREVIUOS           = {0x21F, 0, 0x80, 12};
+BUTTON LIST               = {0x21F, 0, 0x01, 0, 550, 2, 3};
+BUTTON VOL_UP             = {0x21F, 0, 0x08, 0, 550, 4, 6};
+BUTTON VOL_DOWN           = {0x21F, 0, 0x04, 0, 550, 8, 10};
+BUTTON MUTE               = {0x21F, 0, 0x0C, 0, 550, 12, 14};
+BUTTON NEXT               = {0x21F, 0, 0x40, 0, 550, 16, 18};
+BUTTON PREVIUOS           = {0x21F, 0, 0x80, 0, 550, 21, 23};
 
-BUTTON SOURCE             = {0x0A2, 1, 0x04, 4};
-BUTTON BACK               = {0x0A2, 1, 0x10, 14};
-BUTTON HOME               = {0x0A2, 1, 0x08, 16};
-BUTTON SCROLL_PRESSED     = {0x0A2, 1, 0xA0, 18};
-BUTTON PHONE              = {0x0A2, 2, 0x80, 21};
+BUTTON SOURCE             = {0x0A2, 1, 0x04, 0, 550, 26, 29};
+BUTTON BACK               = {0x0A2, 1, 0x10, 0, 550, 33, 36};
+BUTTON HOME               = {0x0A2, 1, 0x08, 0, 550, 40, 43};
+BUTTON SCROLL_PRESSED     = {0x0A2, 1, 0xA0, 0, 550, 48, 53};
+BUTTON PHONE              = {0x0A2, 2, 0x80, 0, 550, 58, 64};
 
-BUTTON VOICE_ASSIST       = {0x221, 0, 0x01, 6};
-BUTTON NIGHT_MODE         = {0x036, 3, 0x36, 23};
+BUTTON VOICE_ASSIST       = {0x221, 0, 0x01, 0, 550, 70, 77};
+BUTTON NIGHT_MODE         = {0x036, 3, 0x36, 0, 550, 85, 93};
 
 BUTTON WHEEL_BUTTON[] = {
   // VOL_UP, 
@@ -71,7 +74,8 @@ BUTTON WHEEL_BUTTON[] = {
 };
 
 unsigned long btnPressedOn = 0;
-int btnReleaseDelay = 150;
+int btnReleaseDelay = 100;
+int pressedButtonIndex = -1;
 
 int buttonsCount = sizeof(WHEEL_BUTTON) / sizeof(BUTTON);
 int buttonState = 255;
@@ -103,12 +107,12 @@ unsigned long rxId;
 byte len;
 byte rxBuf[8];
 
-MCP_CAN CAN0(9);                            // CAN0 interface usins CS on digital pin 2
-MCP_CAN CAN1(10);                             // CAN1 interface using CS on digital pin 3
+MCP_CAN CAN0(10);                            // CAN0 interface usins CS on digital pin 2
+MCP_CAN CAN1(9);                             // CAN1 interface using CS on digital pin 3
 MCP41_Simple Potentiometer;
 
-#define CAN0_INT 3              //define interrupt pin for CAN0 recieve buffer
-#define CAN1_INT 2              //define interrupt pin for CAN1 recieve buffer
+#define CAN0_INT 2              //define interrupt pin for CAN0 recieve buffer
+#define CAN1_INT 3              //define interrupt pin for CAN1 recieve buffer
 #define POT_CS 8                //digital potentiometer CS pin
 
 void setup()
@@ -311,11 +315,31 @@ void checkIgnition(){
 
 void processKey(){
   for (int i = 0; i < buttonsCount; i++){
-    if (rxId == WHEEL_BUTTON[i].id && rxBuf[WHEEL_BUTTON[i].byteNum] == WHEEL_BUTTON[i].byteValue){
-      pressKey(WHEEL_BUTTON[i].resistance);
-      rxBuf[WHEEL_BUTTON[i].byteNum] = 0x00;
+    if (rxId == WHEEL_BUTTON[i].id){
+      if(rxBuf[WHEEL_BUTTON[i].byteNum] == WHEEL_BUTTON[i].byteValue){
 
-      return;
+        rxBuf[WHEEL_BUTTON[i].byteNum] = 0x00;
+
+        if (pressedButtonIndex == -1) {
+          pressedButtonIndex = i;
+          WHEEL_BUTTON[i].pressedOn = millis();
+        }
+
+        if(millis() - WHEEL_BUTTON[i].pressedOn >= WHEEL_BUTTON[i].longPressTime){
+          pressKey(WHEEL_BUTTON[i].longPressResistance);
+        }
+
+        return;
+      }
+
+      if(pressedButtonIndex == i){
+        if(millis() - WHEEL_BUTTON[i].pressedOn < WHEEL_BUTTON[i].longPressTime){
+          pressKey(WHEEL_BUTTON[i].shortPressResistance);
+        }
+
+        pressedButtonIndex = -1;
+        return;
+      }
     }
   }
 
@@ -338,7 +362,7 @@ void processKey(){
   }
   
   // if no press detected for more than period - release key
-  if (millis() - btnPressedOn > btnReleaseDelay){
+  if (millis() - btnPressedOn > btnReleaseDelay && pressedButtonIndex == -1){
     pressKey(buttonReleased);
   }
 }
