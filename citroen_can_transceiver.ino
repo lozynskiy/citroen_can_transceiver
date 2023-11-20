@@ -81,7 +81,7 @@ CAN_PACKAGE CAN_VOLUME = {0x1A5, 1, {0x14}, 500, 0};
 
 CAN_PACKAGE CAN_PACKAGES[] = {
   CAN_VOLUME,                                                       // set volume
-  {0x165, 4, {0xC0, 0x00, 0x40, 0x00}, 100, 0},                     // enable amplifier
+  {0x165, 4, {0xC0, 0xC0, 0x60, 0x00}, 100, 0},                     // enable amplifier
   {0x1E5, 7, {0x3F, 0x3F, 0x43, 0x3F, 0x44, 0x47, 0x40}, 500, 0}    // set equalizer
 };
 
@@ -94,9 +94,6 @@ int dynamicVolumeByteNum = 0;
 // power down option
 unsigned long lastActivityOn = 0;
 unsigned long powerDownDelay = 5000;
-
-unsigned long can1ToCan0BlockedPackages[] = {0x1A5, 0x165, 0x1E5}; // block amplifier related packages received from CAN adapter
-int can1ToCan0BlockedPackagesCount = sizeof(can1ToCan0BlockedPackages) / sizeof(byte);
 
 byte mcpState = MCP_NORMAL;
 unsigned long rxId;
@@ -261,8 +258,8 @@ void getConfig(){
 }
 
 bool isForbidden(){
-  for (int i = 0; i < can1ToCan0BlockedPackagesCount; i++){
-    if (rxId == can1ToCan0BlockedPackages[i]) return true;
+  for (int i = 0; i < dataPackagesCount; i++){
+    if (rxId == CAN_PACKAGES[i].id) return true;
   }
 
   return false;
