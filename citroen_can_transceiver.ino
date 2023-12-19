@@ -16,7 +16,7 @@ struct IGNITION {
   unsigned long id = 0x0F6;
   int byteNum = 0;
   byte byteValue = 0x08;
-  bool on = true;
+  bool on = false;
   int offDelay = 3000;
   unsigned long switchedOffOn = 0;
 } IGNITION;
