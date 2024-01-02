@@ -1,3 +1,33 @@
+/*
+Equalizer config:
+  ID: 1E5
+  DLC: 7
+  Data:
+    0: balance  (36 - 48)
+    1: fader    (36 - 48)
+    2: bass     (36 - 48)
+    3: -        (3f)
+    4: treble   (36 - 48)
+    5: ludness + speed
+      false + false = 00
+      true + false = 40
+      true + true = 47
+      false + true = 07
+    6: preset: 
+      40 - Lineral; 
+      44 - Classic; 
+      48 - Jazz; 
+      4C - Rock/Pop; 
+      54 - Techno; 
+      50 - Vocal
+
+Volume:
+  ID: 1A5
+  DLC: 1
+  Data:
+    0: 00 - 1E
+*/
+
 #include <mcp_can.h>
 #include <SPI.h>
 #include <EEPROM.h>
@@ -82,7 +112,7 @@ CAN_PACKAGE CAN_VOLUME = {0x1A5, 1, {0x14}, 500, 0};
 CAN_PACKAGE CAN_PACKAGES[] = {
   CAN_VOLUME,                                                       // set volume
   {0x165, 4, {0xC0, 0xC0, 0x60, 0x00}, 100, 0},                     // enable amplifier
-  {0x1E5, 7, {0x3F, 0x3F, 0x43, 0x3F, 0x44, 0x47, 0x40}, 500, 0}    // set equalizer
+  {0x1E5, 7, {0x3F, 0x3F, 0x43, 0x3F, 0x44, 0x40, 0x40}, 500, 0}    // set equalizer config
 };
 
 int dataPackagesCount = sizeof(CAN_PACKAGES) / sizeof(CAN_PACKAGE);
