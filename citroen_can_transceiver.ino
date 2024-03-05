@@ -118,20 +118,19 @@ CAN_PACKAGE CAN_PACKAGES[] = {
 int dataPackagesCount = sizeof(CAN_PACKAGES) / sizeof(CAN_PACKAGE);
 
 // dynamic volume
-bool useDynamicVolume = false;
+bool useDynamicVolume = true;
 int dynamicVolumeByteNum = 0;
 
 // power down option
 unsigned long lastActivityOn = 0;
 unsigned long powerDownDelay = 5000;
 
-byte mcpState = MCP_NORMAL;
 unsigned long rxId;
 byte len;
 byte rxBuf[8];
 
 MCP_CAN CAN0(9);                            // CAN0 interface usins CS on digital pin 2
-MCP_CAN CAN1(10);                             // CAN1 interface using CS on digital pin 3
+MCP_CAN CAN1(10);                           // CAN1 interface using CS on digital pin 3
 MCP41_Simple Potentiometer;
 
 #define CAN0_INT 3              //define interrupt pin for CAN0 recieve buffer
@@ -140,15 +139,15 @@ MCP41_Simple Potentiometer;
 
 void setup()
 {
-  power.setSystemPrescaler(PRESCALER_2);
-  power.setSleepMode(POWERDOWN_SLEEP);
+  // power.setSystemPrescaler(PRESCALER_2);
+  power.setSleepMode(STANDBY_SLEEP);
   power.autoCalibrate();
 
   Serial.begin(38400);
   Potentiometer.begin(POT_CS);
 
-  pinMode(CAN0_INT, INPUT_PULLUP);
-  pinMode(CAN1_INT, INPUT_PULLUP);
+  pinMode(CAN0_INT, INPUT);
+  pinMode(CAN1_INT, INPUT);
   
   // init CAN0 bus, baudrate: 125k@8MHz
   if(CAN0.begin(MCP_ANY, CAN_125KBPS, MCP_8MHZ) == CAN_OK){
@@ -419,8 +418,16 @@ void setDynamicVolume(){
     return;
   }
   
-  if (rxId == CAN_VOLUME.id && (rxBuf[dynamicVolumeByteNum] >= 0 && rxBuf[dynamicVolumeByteNum] <= 30) && rxBuf[dynamicVolumeByteNum] != CAN_VOLUME.data[dynamicVolumeByteNum]){
-    CAN_VOLUME.data[dynamicVolumeByteNum] = rxBuf[dynamicVolumeByteNum];
+  if (rxId == CAN_VOLUME.id && (rxBuf[dynamicVolumeByteNum] >= 0 && rxBuf[dynamicVolumeByteNum] <= 30)){
+    
+    byte volume = rxBuf[dynamicVolumeByteNum] + 5;
+
+    volume = rxBuf[dynamicVolumeByteNum] == 0 ? 0 : volume;
+    volume = volume >= 29 ? 29 : volume;
+
+    CAN_VOLUME.data[dynamicVolumeByteNum] = volume;
+
+    // Serial.println("Volume: " + String(CAN_VOLUME.data[dynamicVolumeByteNum]));
   }
 }
 
@@ -470,18 +477,15 @@ void powerDown(){
 
     CAN1.setMode(MCP_SLEEP);
     CAN0.setMode(MCP_SLEEP);
-    mcpState = MCP_SLEEP;
 
     power.sleep(SLEEP_FOREVER);
+
+    CAN1.setMode(MCP_NORMAL); 
+    CAN0.setMode(MCP_NORMAL);
+
+    lastActivityOn = millis();
   }
 }
 
 static void ISR_CAN(){
-  if (mcpState == MCP_SLEEP){
-    CAN1.setMode(MCP_NORMAL); 
-    CAN0.setMode(MCP_NORMAL);
-
-    mcpState = MCP_NORMAL;
-    lastActivityOn = millis();
-  }
 }
