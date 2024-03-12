@@ -118,7 +118,7 @@ CAN_PACKAGE CAN_PACKAGES[] = {
 int dataPackagesCount = sizeof(CAN_PACKAGES) / sizeof(CAN_PACKAGE);
 
 // dynamic volume
-bool useDynamicVolume = true;
+bool useDynamicVolume = false;
 int dynamicVolumeByteNum = 0;
 
 // power down option
