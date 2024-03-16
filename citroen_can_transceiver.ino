@@ -48,7 +48,8 @@ struct IGNITION {
   byte byteValue = 0x08;
   bool on = false;
   int offDelay = 3000;
-  unsigned long switchedOffOn = 0;
+  unsigned long switchedOffTime = 0;
+  unsigned long switchedOnTime = 0;
 } IGNITION;
 
 struct BUTTON {
@@ -108,18 +109,22 @@ int buttonState = 255;
 int buttonReleased = 255;
 
 CAN_PACKAGE CAN_VOLUME = {0x1A5, 1, {0x14}, 500, 0};
+CAN_PACKAGE CAN_AMPLIFIER = {0x165, 4, {0xC0, 0xC0, 0x60, 0x00}, 100, 0};
 
 CAN_PACKAGE CAN_PACKAGES[] = {
   CAN_VOLUME,                                                       // set volume
-  {0x165, 4, {0xC0, 0xC0, 0x60, 0x00}, 100, 0},                     // enable amplifier
+  CAN_AMPLIFIER,                                                    // enable amplifier
   {0x1E5, 7, {0x3F, 0x3F, 0x43, 0x3F, 0x44, 0x40, 0x40}, 500, 0}    // set equalizer config
 };
 
 int dataPackagesCount = sizeof(CAN_PACKAGES) / sizeof(CAN_PACKAGE);
 
-// dynamic volume
+// amplifier configs
 bool useDynamicVolume = false;
 int dynamicVolumeByteNum = 0;
+int amplifierMaxVolume = 28;
+int amplifierVolumeOffset = 5;
+unsigned long amplifierPowerOnDelay = 1000;
 
 // power down option
 unsigned long lastActivityOn = 0;
@@ -297,11 +302,17 @@ bool isForbidden(){
 void sendData(){
   for (int i = 0; i < dataPackagesCount; i++){
     if(millis() - CAN_PACKAGES[i].lastMillis >= CAN_PACKAGES[i].period){
+
+      if (millis() - IGNITION.switchedOnTime < amplifierPowerOnDelay && CAN_PACKAGES[i].id == CAN_AMPLIFIER.id){
+        continue;
+      }
+
       if (useDynamicVolume && CAN_PACKAGES[i].id == CAN_VOLUME.id){
         CAN0.sendMsgBuf(CAN_VOLUME.id, CAN_VOLUME.dlc, CAN_VOLUME.data);
       } else {
         CAN0.sendMsgBuf(CAN_PACKAGES[i].id, CAN_PACKAGES[i].dlc, CAN_PACKAGES[i].data);
       }
+
       CAN_PACKAGES[i].lastMillis = millis();
     }
   }
@@ -309,9 +320,10 @@ void sendData(){
 
 void checkIgnition(){
   if (rxId == IGNITION.id){
-    if ((rxBuf[IGNITION.byteNum] & IGNITION.byteValue) && (IGNITION.on == false || IGNITION.switchedOffOn != 0)){
+    if ((rxBuf[IGNITION.byteNum] & IGNITION.byteValue) && (IGNITION.on == false || IGNITION.switchedOffTime != 0)){
       IGNITION.on = true;
-      IGNITION.switchedOffOn = 0;
+      IGNITION.switchedOffTime = 0;
+      IGNITION.switchedOnTime = millis();
 
       Serial.println("ignition on"); 
 
@@ -320,15 +332,15 @@ void checkIgnition(){
     
     if (!IGNITION.on) return;
 
-    if (!(rxBuf[IGNITION.byteNum] & IGNITION.byteValue) && IGNITION.on == true && IGNITION.switchedOffOn == 0){
-      IGNITION.switchedOffOn = millis();
+    if (!(rxBuf[IGNITION.byteNum] & IGNITION.byteValue) && IGNITION.on == true && IGNITION.switchedOffTime == 0){
+      IGNITION.switchedOffTime = millis();
     }
   }
 
-  if (IGNITION.switchedOffOn == 0 || IGNITION.on == false) return;
+  if (IGNITION.switchedOffTime == 0 || IGNITION.on == false) return;
 
   // delay sleep
-  if (millis() - IGNITION.switchedOffOn > IGNITION.offDelay && IGNITION.on == true){
+  if (millis() - IGNITION.switchedOffTime > IGNITION.offDelay && IGNITION.on == true){
     IGNITION.on = false;
 
     Serial.println("ignition off"); 
@@ -418,16 +430,14 @@ void setDynamicVolume(){
     return;
   }
   
-  if (rxId == CAN_VOLUME.id && (rxBuf[dynamicVolumeByteNum] >= 0 && rxBuf[dynamicVolumeByteNum] <= 30)){
+  if (rxId == CAN_VOLUME.id && (rxBuf[dynamicVolumeByteNum] >= 0 && rxBuf[dynamicVolumeByteNum] <= amplifierMaxVolume)){
     
-    byte volume = rxBuf[dynamicVolumeByteNum] + 5;
+    byte volume = rxBuf[dynamicVolumeByteNum] + amplifierVolumeOffset;
 
     volume = rxBuf[dynamicVolumeByteNum] == 0 ? 0 : volume;
-    volume = volume >= 29 ? 29 : volume;
+    volume = volume > amplifierMaxVolume ? amplifierMaxVolume : volume;
 
     CAN_VOLUME.data[dynamicVolumeByteNum] = volume;
-
-    // Serial.println("Volume: " + String(CAN_VOLUME.data[dynamicVolumeByteNum]));
   }
 }
 
