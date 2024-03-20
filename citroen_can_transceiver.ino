@@ -134,8 +134,8 @@ unsigned long rxId;
 byte len;
 byte rxBuf[8];
 
-MCP_CAN CAN0(9);                            // CAN0 interface usins CS on digital pin 2
-MCP_CAN CAN1(10);                           // CAN1 interface using CS on digital pin 3
+MCP_CAN CAN0(9);                            // CAN0 interface usins CS on digital pin 9
+MCP_CAN CAN1(10);                           // CAN1 interface using CS on digital pin 10
 MCP41_Simple Potentiometer;
 
 #define CAN0_INT 3              //define interrupt pin for CAN0 recieve buffer
