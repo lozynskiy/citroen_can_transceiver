@@ -173,6 +173,35 @@ void setup()
   Potentiometer.setWiper(buttonReleased); 
 }
 
+void setupCanControllers(){
+  int connectionEstablishRetryCount = 3;
+
+  // init CAN0 bus, baudrate: 125k@8MHz
+  for (int i = 1; i <= connectionEstablishRetryCount; i ++){
+    if(CAN0.begin(MCP_ANY, CAN_125KBPS, MCP_8MHZ) == CAN_OK){
+      Serial.println("CAN0: Init OK!");
+      CAN0.setMode(MCP_NORMAL);
+      CAN0.setSleepWakeup(1);
+      break;
+    } else {
+      // Serial.println("CAN0: Init Fail!!!, retry in 100 ms");
+      delay(100);
+    }
+  }
+  
+  // init CAN1 bus, baudrate: 125k@8MHz
+  for (int i = 1; i <= connectionEstablishRetryCount; i ++){
+    if(CAN1.begin(MCP_ANY, CAN_125KBPS, MCP_8MHZ) == CAN_OK){
+      Serial.println("CAN1: Init OK!");
+      CAN1.setMode(MCP_NORMAL);
+      break;
+    } else {
+      // Serial.println("CAN1: Init Fail!!!, retry in 100 ms");
+      delay(100);
+    }
+  }
+}
+
 void stringSplit(String * strs, String value, char separator){
   int count = 0;
 
@@ -443,10 +472,11 @@ void setDynamicVolume(){
 
 void processCan(){
 
-  if(!digitalRead(CAN0_INT)){
+  if(!digitalRead(CAN0_INT) && CAN0.readMsgBuf(&rxId, &len, rxBuf) == CAN_OK){
     lastActivityOn = millis();
 
-    CAN0.readMsgBuf(&rxId, &len, rxBuf);
+    // Serial.println("receive: " + String(rxId, HEX));
+
     checkIgnition();
 
     if (!IGNITION.on) return;
@@ -462,9 +492,7 @@ void processCan(){
     processIncomingByte(Serial.read());
   }
   
-  if(!digitalRead(CAN1_INT)){
-    CAN1.readMsgBuf(&rxId, &len, rxBuf);
-
+  if(!digitalRead(CAN1_INT) && CAN1.readMsgBuf(&rxId, &len, rxBuf) == CAN_OK){
     setDynamicVolume();
 
     if(!isForbidden()){
@@ -482,16 +510,34 @@ void loop(){
 
 void powerDown(){
   if (millis() - lastActivityOn > powerDownDelay && digitalRead(CAN0_INT)) {
+
+    // can was active, reset can controlers before sleep
+    if (lastActivityOn > 0) {
+      Serial.println("reset CAN");
+      setupCanControllers();
+    }
+
     Serial.println("power down");
     Serial.flush();
 
     CAN1.setMode(MCP_SLEEP);
     CAN0.setMode(MCP_SLEEP);
 
-    power.sleep(SLEEP_FOREVER);
+    cli(); // Disable interrupts
+    if(digitalRead(CAN0_INT)) // Make sure we haven't missed an interrupt between the digitalRead() above and now. If an interrupt happens between now and sei()/sleep_cpu() then sleep_cpu() will immediately wake up again
+    {
+      sleep_enable();
+      sleep_bod_disable();
+      sei();
+      sleep_cpu();
+      sleep_disable();
+    }
+    sei();
 
-    CAN1.setMode(MCP_NORMAL); 
-    CAN0.setMode(MCP_NORMAL);
+    Serial.println("wake up");
+
+    // reset can controlers after sleep
+    setupCanControllers();
 
     lastActivityOn = millis();
   }
