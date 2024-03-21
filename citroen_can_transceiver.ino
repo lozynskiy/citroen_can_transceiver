@@ -31,7 +31,7 @@ Volume:
 #include <mcp_can.h>
 #include <SPI.h>
 #include <EEPROM.h>
-#include <GyverPower.h>
+#include <avr/sleep.h>
 #include <MCP41_Simple.h>
 
 struct CAN_PACKAGE {
@@ -144,9 +144,10 @@ MCP41_Simple Potentiometer;
 
 void setup()
 {
-  // power.setSystemPrescaler(PRESCALER_2);
-  power.setSleepMode(STANDBY_SLEEP);
-  power.autoCalibrate();
+  // noInterrupts();
+  // CLKPR = _BV(CLKPCE);  // enable change of the clock prescaler
+  // CLKPR = _BV(CLKPS0);  // divide frequency by 2
+  // interrupts();
 
   Serial.begin(38400);
   Potentiometer.begin(POT_CS);
@@ -154,20 +155,11 @@ void setup()
   pinMode(CAN0_INT, INPUT);
   pinMode(CAN1_INT, INPUT);
   
-  // init CAN0 bus, baudrate: 125k@8MHz
-  if(CAN0.begin(MCP_ANY, CAN_125KBPS, MCP_8MHZ) == CAN_OK){
-    Serial.print("CAN0: Init OK!\r\n");
-    CAN0.setMode(MCP_NORMAL);
-    CAN0.setSleepWakeup(1);
-  } else Serial.print("CAN0: Init Fail!!!\r\n");
-  
-  // init CAN1 bus, baudrate: 125k@8MHz
-  if(CAN1.begin(MCP_ANY, CAN_125KBPS, MCP_8MHZ) == CAN_OK){
-    Serial.print("CAN1: Init OK!\r\n");
-    CAN1.setMode(MCP_NORMAL);
-  } else Serial.print("CAN1: Init Fail!!!\r\n");
+  setupCanControllers();
 
   attachInterrupt(digitalPinToInterrupt(CAN0_INT), ISR_CAN, FALLING);
+
+  set_sleep_mode(SLEEP_MODE_PWR_DOWN);
 
   loadConfig();
   Potentiometer.setWiper(buttonReleased); 
