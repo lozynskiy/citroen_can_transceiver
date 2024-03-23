@@ -47,7 +47,7 @@ struct IGNITION {
   int byteNum = 0;
   byte byteValue = 0x08;
   bool on = false;
-  int offDelay = 3000;
+  int offDelay = 2500;
   unsigned long switchedOffTime = 0;
   unsigned long switchedOnTime = 0;
 } IGNITION;
@@ -124,7 +124,7 @@ bool useDynamicVolume = false;
 int dynamicVolumeByteNum = 0;
 int amplifierMaxVolume = 28;
 int amplifierVolumeOffset = 5;
-unsigned long amplifierPowerOnDelay = 1000;
+unsigned long amplifierPowerOnDelay = 2000;
 
 // power down option
 unsigned long lastActivityOn = 0;
@@ -342,10 +342,13 @@ void sendData(){
 void checkIgnition(){
   if (rxId == IGNITION.id){
     if ((rxBuf[IGNITION.byteNum] & IGNITION.byteValue) && (IGNITION.on == false || IGNITION.switchedOffTime != 0)){
-      IGNITION.on = true;
+      // handle quick off/on case, set values only if previous ignition state is off for longer than IGNITION.offDelay
+      if (IGNITION.on == false){
+        IGNITION.on = true;
+        IGNITION.switchedOnTime = millis();
+      }
+      
       IGNITION.switchedOffTime = 0;
-      IGNITION.switchedOnTime = millis();
-
       Serial.println("ignition on"); 
 
       return;
