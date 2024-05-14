@@ -134,13 +134,14 @@ unsigned long rxId;
 byte len;
 byte rxBuf[8];
 
-MCP_CAN CAN0(9);                            // CAN0 interface usins CS on digital pin 9
-MCP_CAN CAN1(10);                           // CAN1 interface using CS on digital pin 10
+MCP_CAN CAN0(9);                // CAN0 interface usins CS on digital pin 9
+MCP_CAN CAN1(10);               // CAN1 interface using CS on digital pin 10
 MCP41_Simple Potentiometer;
 
-#define CAN0_INT 3              //define interrupt pin for CAN0 recieve buffer
-#define CAN1_INT 2              //define interrupt pin for CAN1 recieve buffer
-#define POT_CS 8                //digital potentiometer CS pin
+#define CAN0_INT 3              // define interrupt pin for CAN0 recieve buffer
+#define CAN1_INT 2              // define interrupt pin for CAN1 recieve buffer
+#define POT_CS 8                // digital potentiometer CS pin
+#define MCP_2551_RS 4           // MCP2551 RS pin
 
 void setup()
 {
@@ -154,6 +155,7 @@ void setup()
 
   pinMode(CAN0_INT, INPUT);
   pinMode(CAN1_INT, INPUT);
+  pinMode(MCP_2551_RS, OUTPUT);
   
   setupCanControllers();
 
@@ -192,6 +194,9 @@ void setupCanControllers(){
       delay(100);
     }
   }
+
+  // Pull the Rs pin of the MCP2551 transceiver low to enable it
+  digitalWrite(MCP_2551_RS, LOW);
 }
 
 void stringSplit(String * strs, String value, char separator){
@@ -488,6 +493,9 @@ void processCan(){
   }
   
   if(!digitalRead(CAN1_INT) && CAN1.readMsgBuf(&rxId, &len, rxBuf) == CAN_OK){
+
+    // Serial.println("receive: " + String(rxId, HEX));
+
     setDynamicVolume();
 
     if(!isForbidden()){
@@ -517,6 +525,9 @@ void powerDown(){
 
     CAN1.setMode(MCP_SLEEP);
     CAN0.setMode(MCP_SLEEP);
+
+    // Pull the Rs pin of the MCP2551 transceiver high to enter sleep mode
+    digitalWrite(MCP_2551_RS, HIGH);
 
     cli(); // Disable interrupts
     if(digitalRead(CAN0_INT)) // Make sure we haven't missed an interrupt between the digitalRead() above and now. If an interrupt happens between now and sei()/sleep_cpu() then sleep_cpu() will immediately wake up again
