@@ -79,7 +79,7 @@ BUTTON PREVIUOS           = {0x21F, 0, 0x80, 12};
 BUTTON SOURCE             = {0x0A2, 1, 0x04, 4};
 BUTTON BACK               = {0x0A2, 1, 0x10, 14};
 BUTTON HOME               = {0x0A2, 1, 0x08, 16};
-BUTTON SCROLL_PRESSED     = {0x0A2, 1, 0xA0, 18};
+BUTTON SCROLL_PRESSED     = {0x0A2, 1, 0x20, 18};
 BUTTON PHONE              = {0x0A2, 2, 0x80, 21};
 
 BUTTON VOICE_ASSIST       = {0x221, 0, 0x01, 6};
@@ -122,7 +122,7 @@ int dataPackagesCount = sizeof(CAN_PACKAGES) / sizeof(CAN_PACKAGE);
 // amplifier configs
 bool useDynamicVolume = false;
 int dynamicVolumeByteNum = 0;
-int amplifierMaxVolume = 28;
+int amplifierMaxVolume = 29;
 int amplifierVolumeOffset = 5;
 unsigned long amplifierPowerOnDelay = 2000;
 
