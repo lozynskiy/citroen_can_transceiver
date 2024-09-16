@@ -46,7 +46,7 @@ struct IGNITION {
   unsigned long id = 0x0F6;
   int byteNum = 0;
   byte byteValue = 0x08;
-  bool on = false;
+  bool on = true;
   int offDelay = 2500;
   unsigned long switchedOffTime = 0;
   unsigned long switchedOnTime = 0;
@@ -56,7 +56,9 @@ struct BUTTON {
   unsigned long id;
   int byteNum;
   byte byteValue;
-  int resistance;
+  int shortPressTap;
+  bool longPressEnabled;
+  int longPressTap;
 };
 
 struct SCROLL {
@@ -67,46 +69,65 @@ struct SCROLL {
   int down;
 };
 
+struct POTENTIOMETER {
+  unsigned long setOn = 0;
+  int resetDelay = 150;
+  int currentState = 255;
+  int resetState = 255;
+};
+
+struct PRESSED_BUTTON {
+  int index = -1;
+  unsigned long pressedOn;
+  int longPressDuration = 300;
+};
+
+struct AMPLIFIER {
+  bool useDynamicVolume = true;
+  int dynamicVolumeByteNum = 0;
+  int maxVolume = 29;
+  int volumeOffset = 5;
+  unsigned long powerOnDelay = 2000;
+};
+
+AMPLIFIER AMPLIFIER;
+POTENTIOMETER POTENTIOMETER;
+PRESSED_BUTTON PRESSED_BUTTON;
 SCROLL SCROLL;//             = {0x0A2, NULL, 0, 26, 29};
 
-BUTTON LIST               = {0x21F, 0, 0x01, 2};
-BUTTON VOL_UP             = {0x21F, 0, 0x08, 3};
-BUTTON VOL_DOWN           = {0x21F, 0, 0x04, 6};
-BUTTON MUTE               = {0x21F, 0, 0x0C, 8};
-BUTTON NEXT               = {0x21F, 0, 0x40, 10};
-BUTTON PREVIUOS           = {0x21F, 0, 0x80, 12};
+BUTTON LIST               = {0x21F, 0, 0x01, 2, false, NULL};
+BUTTON VOL_UP             = {0x21F, 0, 0x08, 3, false, NULL};
+BUTTON VOL_DOWN           = {0x21F, 0, 0x04, 6, false, NULL};
+BUTTON MUTE               = {0x21F, 0, 0x0C, 8, false, NULL};
+BUTTON NEXT               = {0x21F, 0, 0x40, 10, true, 26};
+BUTTON PREVIUOS           = {0x21F, 0, 0x80, 12, true, 29};
 
-BUTTON SOURCE             = {0x0A2, 1, 0x04, 4};
-BUTTON BACK               = {0x0A2, 1, 0x10, 14};
-BUTTON HOME               = {0x0A2, 1, 0x08, 16};
-BUTTON SCROLL_PRESSED     = {0x0A2, 1, 0x20, 18};
-BUTTON PHONE              = {0x0A2, 2, 0x80, 21};
+BUTTON SOURCE             = {0x0A2, 1, 0x04, 4, false, NULL};
+BUTTON BACK               = {0x0A2, 1, 0x10, 14, false, NULL};
+BUTTON HOME               = {0x0A2, 1, 0x08, 16, false, NULL};
+BUTTON SCROLL_PRESSED     = {0x0A2, 1, 0x20, 18, false, NULL};
+BUTTON PHONE              = {0x0A2, 2, 0x80, 21, false, NULL};
 
-BUTTON VOICE_ASSIST       = {0x221, 0, 0x01, 6};
-BUTTON NIGHT_MODE         = {0x036, 3, 0x36, 23};
+BUTTON VOICE_ASSIST       = {0x221, 0, 0x01, 6, false, NULL};
+BUTTON NIGHT_MODE         = {0x036, 3, 0x36, 23, false, NULL};
 
 BUTTON WHEEL_BUTTON[] = {
   // VOL_UP, 
   // VOL_DOWN, 
   // MUTE, 
-  // NEXT, 
-  // PREVIUOS, 
+  NEXT, 
+  PREVIUOS, 
   // BACK, 
-  // HOME, 
   // SCROLL_PRESSED, 
   // PHONE, 
-  // NIGHT_MODE,
+  NIGHT_MODE,
+  HOME, 
   LIST,
   SOURCE, 
   VOICE_ASSIST
 };
 
-unsigned long btnPressedOn = 0;
-int btnReleaseDelay = 150;
-
 int buttonsCount = sizeof(WHEEL_BUTTON) / sizeof(BUTTON);
-int buttonState = 255;
-int buttonReleased = 255;
 
 CAN_PACKAGE CAN_VOLUME = {0x1A5, 1, {0x14}, 500, 0};
 CAN_PACKAGE CAN_AMPLIFIER = {0x165, 4, {0xC0, 0xC0, 0x60, 0x00}, 100, 0};
@@ -118,13 +139,6 @@ CAN_PACKAGE CAN_PACKAGES[] = {
 };
 
 int dataPackagesCount = sizeof(CAN_PACKAGES) / sizeof(CAN_PACKAGE);
-
-// amplifier configs
-bool useDynamicVolume = false;
-int dynamicVolumeByteNum = 0;
-int amplifierMaxVolume = 29;
-int amplifierVolumeOffset = 5;
-unsigned long amplifierPowerOnDelay = 2000;
 
 // power down option
 unsigned long lastActivityOn = 0;
@@ -143,13 +157,7 @@ MCP41_Simple Potentiometer;
 #define POT_CS 8                // digital potentiometer CS pin
 #define MCP_2551_RS 4           // MCP2551 RS pin
 
-void setup()
-{
-  // noInterrupts();
-  // CLKPR = _BV(CLKPCE);  // enable change of the clock prescaler
-  // CLKPR = _BV(CLKPS0);  // divide frequency by 2
-  // interrupts();
-
+void setup(){
   Serial.begin(38400);
   Potentiometer.begin(POT_CS);
 
@@ -164,7 +172,7 @@ void setup()
   set_sleep_mode(SLEEP_MODE_PWR_DOWN);
 
   loadConfig();
-  Potentiometer.setWiper(buttonReleased); 
+  Potentiometer.setWiper(POTENTIOMETER.resetState); 
 }
 
 void setupCanControllers(){
@@ -317,7 +325,7 @@ void getConfig(){
   }
 }
 
-bool isForbidden(){
+bool isForbiddenPackage(){
   for (int i = 0; i < dataPackagesCount; i++){
     if (rxId == CAN_PACKAGES[i].id) return true;
   }
@@ -329,11 +337,11 @@ void sendData(){
   for (int i = 0; i < dataPackagesCount; i++){
     if(millis() - CAN_PACKAGES[i].lastMillis >= CAN_PACKAGES[i].period){
 
-      if (millis() - IGNITION.switchedOnTime < amplifierPowerOnDelay && CAN_PACKAGES[i].id == CAN_AMPLIFIER.id){
+      if (CAN_PACKAGES[i].id == CAN_AMPLIFIER.id && millis() - IGNITION.switchedOnTime < AMPLIFIER.powerOnDelay){
         continue;
       }
 
-      if (useDynamicVolume && CAN_PACKAGES[i].id == CAN_VOLUME.id){
+      if (AMPLIFIER.useDynamicVolume && CAN_PACKAGES[i].id == CAN_VOLUME.id){
         CAN0.sendMsgBuf(CAN_VOLUME.id, CAN_VOLUME.dlc, CAN_VOLUME.data);
       } else {
         CAN0.sendMsgBuf(CAN_PACKAGES[i].id, CAN_PACKAGES[i].dlc, CAN_PACKAGES[i].data);
@@ -376,13 +384,16 @@ void checkIgnition(){
   }
 }
 
-void processKey(){
+void processWheelButton(){
   for (int i = 0; i < buttonsCount; i++){
-    if (rxId == WHEEL_BUTTON[i].id && rxBuf[WHEEL_BUTTON[i].byteNum] == WHEEL_BUTTON[i].byteValue){
-      pressKey(WHEEL_BUTTON[i].resistance);
-      rxBuf[WHEEL_BUTTON[i].byteNum] = 0x00;
-
-      return;
+    if (rxId == WHEEL_BUTTON[i].id) {
+      if (rxBuf[WHEEL_BUTTON[i].byteNum] == WHEEL_BUTTON[i].byteValue) {
+        pressButton(i);
+        rxBuf[WHEEL_BUTTON[i].byteNum] = 0x00;
+        return;
+      } else {
+        releaseButton(i);
+      }
     }
   }
 
@@ -393,9 +404,9 @@ void processKey(){
 
     if (SCROLL.position != rxBuf[SCROLL.byteNum]){
       if (rxBuf[SCROLL.byteNum] > SCROLL.position){
-        pressKey(SCROLL.up);
+        setPotentiometer(SCROLL.up);
       } else {
-        pressKey(SCROLL.down);
+        setPotentiometer(SCROLL.down);
       }
       SCROLL.position = rxBuf[SCROLL.byteNum];
       rxBuf[SCROLL.byteNum] = 0x00;
@@ -403,22 +414,62 @@ void processKey(){
       return;
     }
   }
-  
-  // if no press detected for more than period - release key
-  if (millis() - btnPressedOn > btnReleaseDelay){
-    pressKey(buttonReleased);
+
+  // if no press detected for more than period - reset potentiometer
+  if (millis() - POTENTIOMETER.setOn > POTENTIOMETER.resetDelay){
+    setPotentiometer(POTENTIOMETER.resetState);
   }
 }
 
-void pressKey(int key){
-  btnPressedOn = millis();
+bool isButtonLongPress(int index) {
+  if (WHEEL_BUTTON[index].longPressEnabled == true && millis() - PRESSED_BUTTON.pressedOn > PRESSED_BUTTON.longPressDuration){
+    return true;
+  }
+  return false;
+}
 
-  if (buttonState != key)
-  {
-    buttonState = key;
+int getButtonTap(int index) {
+  int tap  = POTENTIOMETER.resetState;
+  if (isButtonLongPress(index)){
+    tap = WHEEL_BUTTON[index].longPressTap;
+  } else {
+    tap = WHEEL_BUTTON[index].shortPressTap;
+  }
 
-    Potentiometer.setWiper(key);
-    Serial.println("pressed key: " + String(key));
+  return tap;
+}
+
+void pressButton (int index){
+  if (PRESSED_BUTTON.index != index){
+    PRESSED_BUTTON.index = index;
+    PRESSED_BUTTON.pressedOn = millis();
+  } else if (isButtonLongPress(index) == true || WHEEL_BUTTON[index].longPressEnabled == false) {
+    // hold button already reach long press state, set potentiometer value
+    setPotentiometer(getButtonTap(index));
+  }
+}
+
+void releaseButton(int index) {
+  int tap  = 0;
+  if (PRESSED_BUTTON.index == index){
+    tap = getButtonTap(index);
+    // set potentiometer value in case there were no long press detected
+    if (POTENTIOMETER.currentState == POTENTIOMETER.resetState){
+      setPotentiometer(tap);
+    }
+    //Serial.println("released: " + String(tap) + ", duration: " + String(millis() - PRESSED_BUTTON.pressedOn));
+    PRESSED_BUTTON.index = -1;
+  }
+}
+
+void setPotentiometer(int tap){
+  POTENTIOMETER.setOn = millis();
+
+  if (POTENTIOMETER.currentState != tap){
+    POTENTIOMETER.currentState = tap;
+
+    Potentiometer.setWiper(tap);
+    //Serial.println("potentiometer tap: " + String(tap));
   }
 }
 
@@ -455,18 +506,18 @@ void processIncomingByte (const byte inByte){
 }
 
 void setDynamicVolume(){
-  if (!useDynamicVolume){
+  if (!AMPLIFIER.useDynamicVolume){
     return;
   }
   
-  if (rxId == CAN_VOLUME.id && (rxBuf[dynamicVolumeByteNum] >= 0 && rxBuf[dynamicVolumeByteNum] <= amplifierMaxVolume)){
+  if (rxId == CAN_VOLUME.id && (rxBuf[AMPLIFIER.dynamicVolumeByteNum] >= 0 && rxBuf[AMPLIFIER.dynamicVolumeByteNum] <= AMPLIFIER.maxVolume)){
     
-    byte volume = rxBuf[dynamicVolumeByteNum] + amplifierVolumeOffset;
+    byte volume = rxBuf[AMPLIFIER.dynamicVolumeByteNum] + AMPLIFIER.volumeOffset;
 
-    volume = rxBuf[dynamicVolumeByteNum] == 0 ? 0 : volume;
-    volume = volume > amplifierMaxVolume ? amplifierMaxVolume : volume;
+    volume = rxBuf[AMPLIFIER.dynamicVolumeByteNum] == 0 ? 0 : volume;
+    volume = volume > AMPLIFIER.maxVolume ? AMPLIFIER.maxVolume : volume;
 
-    CAN_VOLUME.data[dynamicVolumeByteNum] = volume;
+    CAN_VOLUME.data[AMPLIFIER.dynamicVolumeByteNum] = volume;
   }
 }
 
@@ -481,7 +532,7 @@ void processCan(){
 
     if (!IGNITION.on) return;
 
-    processKey();
+    processWheelButton();
 
     CAN1.sendMsgBuf(rxId, len, rxBuf);
   }
@@ -494,11 +545,11 @@ void processCan(){
   
   if(!digitalRead(CAN1_INT) && CAN1.readMsgBuf(&rxId, &len, rxBuf) == CAN_OK){
 
-    // Serial.println("receive: " + String(rxId, HEX));
+    Serial.println("receive: " + String(rxId, HEX) + ": " + String(rxBuf[0], HEX) + " " + String(rxBuf[1], HEX) + " " + String(rxBuf[2], HEX) + " " + String(rxBuf[3], HEX) + " " + String(rxBuf[4], HEX) + " " + String(rxBuf[5], HEX) + " " + String(rxBuf[6], HEX) + " " + String(rxBuf[7], HEX));
 
     setDynamicVolume();
 
-    if(!isForbidden()){
+    if(!isForbiddenPackage()){
       CAN0.sendMsgBuf(rxId, len, rxBuf);
     }
   }
@@ -512,7 +563,7 @@ void loop(){
 }
 
 void powerDown(){
-  if (millis() - lastActivityOn > powerDownDelay && digitalRead(CAN0_INT)) {
+  if (millis() - lastActivityOn > powerDownDelay && digitalRead(CAN0_INT) && IGNITION.on == false) {
 
     // can was active, reset can controlers before sleep
     if (lastActivityOn > 0) {
