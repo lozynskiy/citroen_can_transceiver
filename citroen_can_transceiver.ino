@@ -46,7 +46,7 @@ struct IGNITION {
   unsigned long id = 0x0F6;
   int byteNum = 0;
   byte byteValue = 0x08;
-  bool on = true;
+  bool on = false;
   int offDelay = 2500;
   unsigned long switchedOffTime = 0;
   unsigned long switchedOnTime = 0;
@@ -79,7 +79,7 @@ struct POTENTIOMETER {
 struct PRESSED_BUTTON {
   int index = -1;
   unsigned long pressedOn;
-  int longPressDuration = 300;
+  int longPressDuration = 400;
 };
 
 struct AMPLIFIER {
@@ -90,6 +90,16 @@ struct AMPLIFIER {
   unsigned long powerOnDelay = 2000;
 };
 
+struct SCREEN_STATUS {
+  unsigned long id = 0x036;
+  int byteNum = 3;
+  byte byteDisabledValue = 0x36;
+  byte currentByte = 0x00;
+  bool screenEnabled = true;
+  int potentiometerTap = 23;
+};
+
+SCREEN_STATUS SCREEN_STATUS;
 AMPLIFIER AMPLIFIER;
 POTENTIOMETER POTENTIOMETER;
 PRESSED_BUTTON PRESSED_BUTTON;
@@ -104,12 +114,12 @@ BUTTON PREVIUOS           = {0x21F, 0, 0x80, 12, true, 29};
 
 BUTTON SOURCE             = {0x0A2, 1, 0x04, 4, false, NULL};
 BUTTON BACK               = {0x0A2, 1, 0x10, 14, false, NULL};
-BUTTON HOME               = {0x0A2, 1, 0x08, 16, false, NULL};
+BUTTON HOME               = {0x0A2, 1, 0x08, 16, true, 23};
 BUTTON SCROLL_PRESSED     = {0x0A2, 1, 0x20, 18, false, NULL};
 BUTTON PHONE              = {0x0A2, 2, 0x80, 21, false, NULL};
 
 BUTTON VOICE_ASSIST       = {0x221, 0, 0x01, 6, false, NULL};
-BUTTON NIGHT_MODE         = {0x036, 3, 0x36, 23, false, NULL};
+// BUTTON NIGHT_MODE         = {0x036, 3, 0x36, 23, false, NULL};
 
 BUTTON WHEEL_BUTTON[] = {
   // VOL_UP, 
@@ -120,7 +130,7 @@ BUTTON WHEEL_BUTTON[] = {
   // BACK, 
   // SCROLL_PRESSED, 
   // PHONE, 
-  NIGHT_MODE,
+  // NIGHT_MODE,
   HOME, 
   LIST,
   SOURCE, 
@@ -384,6 +394,22 @@ void checkIgnition(){
   }
 }
 
+void setScreenStatus(){
+  if (rxId != SCREEN_STATUS.id){
+    return;
+  }
+    
+  if (rxBuf[SCREEN_STATUS.byteNum] == SCREEN_STATUS.currentByte) {
+    return;
+  }
+
+  if (rxBuf[SCREEN_STATUS.byteNum] == SCREEN_STATUS.byteDisabledValue || SCREEN_STATUS.currentByte == SCREEN_STATUS.byteDisabledValue){
+    setPotentiometer(SCREEN_STATUS.potentiometerTap);
+  }
+
+  SCREEN_STATUS.currentByte = rxBuf[SCREEN_STATUS.byteNum];
+}
+
 void processWheelButton(){
   for (int i = 0; i < buttonsCount; i++){
     if (rxId == WHEEL_BUTTON[i].id) {
@@ -422,7 +448,7 @@ void processWheelButton(){
 }
 
 bool isButtonLongPress(int index) {
-  if (WHEEL_BUTTON[index].longPressEnabled == true && millis() - PRESSED_BUTTON.pressedOn > PRESSED_BUTTON.longPressDuration){
+  if (WHEEL_BUTTON[index].longPressEnabled == true && (millis() - PRESSED_BUTTON.pressedOn) > PRESSED_BUTTON.longPressDuration){
     return true;
   }
   return false;
@@ -446,6 +472,7 @@ void pressButton (int index){
   } else if (isButtonLongPress(index) == true || WHEEL_BUTTON[index].longPressEnabled == false) {
     // hold button already reach long press state, set potentiometer value
     setPotentiometer(getButtonTap(index));
+    //Serial.println("pressed: " + String(getButtonTap(index)) + ", duration: " + String(millis() - PRESSED_BUTTON.pressedOn));
   }
 }
 
@@ -457,7 +484,7 @@ void releaseButton(int index) {
     if (POTENTIOMETER.currentState == POTENTIOMETER.resetState){
       setPotentiometer(tap);
     }
-    //Serial.println("released: " + String(tap) + ", duration: " + String(millis() - PRESSED_BUTTON.pressedOn));
+    // Serial.println("released: " + String(tap) + ", duration: " + String(millis() - PRESSED_BUTTON.pressedOn));
     PRESSED_BUTTON.index = -1;
   }
 }
@@ -465,6 +492,7 @@ void releaseButton(int index) {
 void setPotentiometer(int tap){
   POTENTIOMETER.setOn = millis();
 
+  // Serial.println("potentiometer current state: " + String(POTENTIOMETER.currentState) + ", received: " + String(tap));
   if (POTENTIOMETER.currentState != tap){
     POTENTIOMETER.currentState = tap;
 
@@ -526,13 +554,16 @@ void processCan(){
   if(!digitalRead(CAN0_INT) && CAN0.readMsgBuf(&rxId, &len, rxBuf) == CAN_OK){
     lastActivityOn = millis();
 
-    // Serial.println("receive: " + String(rxId, HEX));
+    // if (rxId == 0x036) {
+    //   Serial.println("receive: " + String(rxId, HEX) + ": " + String(rxBuf[0], HEX) + " " + String(rxBuf[1], HEX) + " " + String(rxBuf[2], HEX) + " " + String(rxBuf[3], HEX) + " " + String(rxBuf[4], HEX) + " " + String(rxBuf[5], HEX) + " " + String(rxBuf[6], HEX) + " " + String(rxBuf[7], HEX));
+    // }
 
     checkIgnition();
 
     if (!IGNITION.on) return;
 
     processWheelButton();
+    // setScreenStatus();
 
     CAN1.sendMsgBuf(rxId, len, rxBuf);
   }
@@ -545,7 +576,11 @@ void processCan(){
   
   if(!digitalRead(CAN1_INT) && CAN1.readMsgBuf(&rxId, &len, rxBuf) == CAN_OK){
 
-    Serial.println("receive: " + String(rxId, HEX) + ": " + String(rxBuf[0], HEX) + " " + String(rxBuf[1], HEX) + " " + String(rxBuf[2], HEX) + " " + String(rxBuf[3], HEX) + " " + String(rxBuf[4], HEX) + " " + String(rxBuf[5], HEX) + " " + String(rxBuf[6], HEX) + " " + String(rxBuf[7], HEX));
+    // if (!(rxId == 0x165 || rxId == 0x3e5 || rxId == 0x1a5 || rxId == 0x1e5 || rxId == 0x167 || rxId == 0x1a9 || rxId == 0x1a3 || rxId == 0x164)) {
+    // // 1a9, 1a3, 164, 
+    // // if (rxId == 0x164) {
+    //   Serial.println("receive: " + String(rxId, HEX) + ": " + String(rxBuf[0], HEX) + " " + String(rxBuf[1], HEX) + " " + String(rxBuf[2], HEX) + " " + String(rxBuf[3], HEX) + " " + String(rxBuf[4], HEX) + " " + String(rxBuf[5], HEX) + " " + String(rxBuf[6], HEX) + " " + String(rxBuf[7], HEX));
+    // }
 
     setDynamicVolume();
 
