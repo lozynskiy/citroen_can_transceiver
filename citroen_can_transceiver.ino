@@ -145,7 +145,8 @@ CAN_PACKAGE CAN_AMPLIFIER = {0x165, 4, {0xC0, 0xC0, 0x60, 0x00}, 100, 0};
 CAN_PACKAGE CAN_PACKAGES[] = {
   CAN_VOLUME,                                                       // set volume
   CAN_AMPLIFIER,                                                    // enable amplifier
-  {0x1E5, 7, {0x3F, 0x3F, 0x43, 0x3F, 0x44, 0x40, 0x40}, 500, 0}    // set equalizer config
+  // balance: 0; fader: -2; bass: +3; ..: 0; treble: +5; ludness + speed: true; false; preset: lineral
+  {0x1E5, 7, {0x3F, 0x3D, 0x42, 0x3F, 0x44, 0x40, 0x40}, 500, 0}    // set equalizer config
 };
 
 int dataPackagesCount = sizeof(CAN_PACKAGES) / sizeof(CAN_PACKAGE);
