@@ -167,6 +167,7 @@ MCP41_Simple Potentiometer;
 #define CAN1_INT 2              // define interrupt pin for CAN1 recieve buffer
 #define POT_CS 8                // digital potentiometer CS pin
 #define MCP_2551_RS 4           // MCP2551 RS pin
+#define REMOTE 5                // Remote trigger pin
 
 void setup(){
   Serial.begin(38400);
@@ -175,6 +176,7 @@ void setup(){
   pinMode(CAN0_INT, INPUT);
   pinMode(CAN1_INT, INPUT);
   pinMode(MCP_2551_RS, OUTPUT);
+  pinMode(REMOTE, OUTPUT);
   
   setupCanControllers();
 
@@ -216,6 +218,9 @@ void setupCanControllers(){
 
   // Pull the Rs pin of the MCP2551 transceiver low to enable it
   digitalWrite(MCP_2551_RS, LOW);
+
+  // Set remote to high to enable power
+  digitalWrite(REMOTE, HIGH);
 }
 
 void stringSplit(String * strs, String value, char separator){
@@ -615,6 +620,9 @@ void powerDown(){
 
     // Pull the Rs pin of the MCP2551 transceiver high to enter sleep mode
     digitalWrite(MCP_2551_RS, HIGH);
+
+    // Set remote to low to disable power
+    digitalWrite(REMOTE, LOW);
 
     cli(); // Disable interrupts
     if(digitalRead(CAN0_INT)) // Make sure we haven't missed an interrupt between the digitalRead() above and now. If an interrupt happens between now and sei()/sleep_cpu() then sleep_cpu() will immediately wake up again
