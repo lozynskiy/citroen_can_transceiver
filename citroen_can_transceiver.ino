@@ -8,13 +8,13 @@ Equalizer config:
     2: bass     (36 - 48)
     3: -        (3f)
     4: treble   (36 - 48)
-    5: ludness + speed
+    5: loudness + speed
       false + false = 00
       true + false = 40
       true + true = 47
       false + true = 07
     6: preset: 
-      40 - Lineral; 
+      40 - Linear; 
       44 - Classic; 
       48 - Jazz; 
       4C - Rock/Pop; 
@@ -79,7 +79,7 @@ struct POTENTIOMETER {
 struct PRESSED_BUTTON {
   int index = -1;
   unsigned long pressedOn;
-  int longPressDuration = 400;
+  int longPressDuration = 500;
 };
 
 struct AMPLIFIER {
@@ -110,7 +110,7 @@ BUTTON VOL_UP             = {0x21F, 0, 0x08, 3, false, NULL};
 BUTTON VOL_DOWN           = {0x21F, 0, 0x04, 6, false, NULL};
 BUTTON MUTE               = {0x21F, 0, 0x0C, 8, false, NULL};
 BUTTON NEXT               = {0x21F, 0, 0x40, 10, true, 26};
-BUTTON PREVIUOS           = {0x21F, 0, 0x80, 12, true, 29};
+BUTTON PREVIOUS           = {0x21F, 0, 0x80, 12, true, 29};
 
 BUTTON SOURCE             = {0x0A2, 1, 0x04, 4, false, NULL};
 BUTTON BACK               = {0x0A2, 1, 0x10, 14, false, NULL};
@@ -126,7 +126,7 @@ BUTTON WHEEL_BUTTON[] = {
   // VOL_DOWN, 
   // MUTE, 
   NEXT, 
-  PREVIUOS, 
+  PREVIOUS, 
   // BACK, 
   // SCROLL_PRESSED, 
   // PHONE, 
@@ -145,7 +145,7 @@ CAN_PACKAGE CAN_AMPLIFIER = {0x165, 4, {0xC0, 0xC0, 0x60, 0x00}, 100, 0};
 CAN_PACKAGE CAN_PACKAGES[] = {
   CAN_VOLUME,                                                       // set volume
   CAN_AMPLIFIER,                                                    // enable amplifier
-  // balance: 0; fader: -2; bass: +3; ..: 0; treble: +5; ludness + speed: true; false; preset: lineral
+  // balance: 0; fader: -2; bass: +3; ..: 0; treble: +5; loudness + speed: true; false; preset: linear
   {0x1E5, 7, {0x3F, 0x3D, 0x42, 0x3F, 0x44, 0x40, 0x40}, 500, 0}    // set equalizer config
 };
 
@@ -163,8 +163,8 @@ MCP_CAN CAN0(9);                // CAN0 interface usins CS on digital pin 9
 MCP_CAN CAN1(10);               // CAN1 interface using CS on digital pin 10
 MCP41_Simple Potentiometer;
 
-#define CAN0_INT 3              // define interrupt pin for CAN0 recieve buffer
-#define CAN1_INT 2              // define interrupt pin for CAN1 recieve buffer
+#define CAN0_INT 3              // define interrupt pin for CAN0 receive buffer
+#define CAN1_INT 2              // define interrupt pin for CAN1 receive buffer
 #define POT_CS 8                // digital potentiometer CS pin
 #define MCP_2551_RS 4           // MCP2551 RS pin
 #define REMOTE 5                // Remote trigger pin
@@ -606,7 +606,7 @@ void loop(){
 void powerDown(){
   if (millis() - lastActivityOn > powerDownDelay && digitalRead(CAN0_INT) && IGNITION.on == false) {
 
-    // can was active, reset can controlers before sleep
+    // can was active, reset can controllers before sleep
     if (lastActivityOn > 0) {
       Serial.println("reset CAN");
       setupCanControllers();
@@ -637,7 +637,7 @@ void powerDown(){
 
     Serial.println("wake up");
 
-    // reset can controlers after sleep
+    // reset can controllers after sleep
     setupCanControllers();
 
     lastActivityOn = millis();
