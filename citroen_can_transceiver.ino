@@ -34,6 +34,63 @@ Volume:
 #include <avr/sleep.h>
 #include <MCP41_Simple.h>
 
+struct config {
+  byte config_version = 2;
+
+  int amplifier_volume_dynamic = 1;
+  int amplifier_volume_max = 29;
+  int amplifier_volume_offset = 5;
+  int amplifier_volume_fixed = 29;
+
+  int equalzer_balance = 0x3f;
+  int equalzer_fader = 0x3f;
+  int equalzer_bass = 0x42;
+  int equalzer_treble = 0x43;
+  int equalzer_loudness = 0x40;
+  int equalzer_speed_dependent_volume = 0x0;
+  int equalzer_preset = 0x40;
+
+  int button_list_process = 1;
+  int button_list_long_press = 1;
+
+  int button_volume_up_process = 0;
+  int button_volume_up_long_press = 0;
+
+  int button_volume_down_process = 0;
+  int button_volume_down_long_press = 0;
+
+  int button_mute_process = 0;
+  int button_mute_long_press = 0;
+
+  int button_next_process = 1;
+  int button_next_long_press = 1;
+
+  int button_previous_process = 1;
+  int button_previous_long_press = 1;
+
+  int button_source_process = 1;
+  int button_source_long_press = 0;
+
+  int button_back_process = 0;
+  int button_back_long_press = 0;
+
+  int button_home_process = 1;
+  int button_home_long_press = 1;
+
+  int button_scroll_press_process = 0;
+  int button_scroll_press_long_press = 0;
+
+  int button_phone_process = 0;
+  int button_phone_long_press = 0;
+  
+  int button_voice_assistant_process = 1;
+  int button_voice_assistant_long_press = 0;
+
+  int button_scroll_process = 0;
+};
+
+config CONFIG;
+
 struct CAN_PACKAGE {
   unsigned long id;
   byte dlc;
@@ -46,7 +103,7 @@ struct IGNITION {
   unsigned long id = 0x0F6;
   int byteNum = 0;
   byte byteValue = 0x08;
-  bool on = false;
+  bool on = true;
   int offDelay = 2500;
   unsigned long switchedOffTime = 0;
   unsigned long switchedOnTime = 0;
@@ -56,6 +113,7 @@ struct BUTTON {
   unsigned long id;
   int byteNum;
   byte byteValue;
+  bool process;
   int shortPressTap;
   bool longPressEnabled;
   int longPressTap;
@@ -63,8 +121,9 @@ struct BUTTON {
 
 struct SCROLL {
   unsigned long id;
-  byte position;
   int byteNum;
+  byte position;
+  bool process;
   int up;
   int down;
 };
@@ -96,60 +155,39 @@ struct SCREEN_STATUS {
   byte byteDisabledValue = 0x36;
   byte currentByte = 0x00;
   bool screenEnabled = true;
-  int potentiometerTap = 23;
+  int potentiometerTap = 102;
 };
 
 SCREEN_STATUS SCREEN_STATUS;
 AMPLIFIER AMPLIFIER;
 POTENTIOMETER POTENTIOMETER;
 PRESSED_BUTTON PRESSED_BUTTON;
-SCROLL SCROLL;//             = {0x0A2, NULL, 0, 26, 29};
 
-BUTTON LIST               = {0x21F, 0, 0x01, 2, false, NULL};
-BUTTON VOL_UP             = {0x21F, 0, 0x08, 3, false, NULL};
-BUTTON VOL_DOWN           = {0x21F, 0, 0x04, 6, false, NULL};
-BUTTON MUTE               = {0x21F, 0, 0x0C, 8, false, NULL};
-BUTTON NEXT               = {0x21F, 0, 0x40, 10, true, 26};
-BUTTON PREVIOUS           = {0x21F, 0, 0x80, 12, true, 29};
+SCROLL SCROLL             = {0x0A2, 0,    NULL, NULL, 36, 40};
+BUTTON LIST               = {0x21F, 0,    0x01, NULL, 2,  NULL, 43};
+BUTTON VOL_UP             = {0x21F, 0,    0x08, NULL, 3,  NULL, 48};
+BUTTON VOL_DOWN           = {0x21F, 0,    0x04, NULL, 6,  NULL, 53};
+BUTTON MUTE               = {0x21F, 0,    0x0C, NULL, 8,  NULL, 58};
+BUTTON NEXT               = {0x21F, 0,    0x40, NULL, 10, NULL, 26};
+BUTTON PREVIOUS           = {0x21F, 0,    0x80, NULL, 12, NULL, 29};
+BUTTON SOURCE             = {0x0A2, 1,    0x04, NULL, 4,  NULL, 64};
+BUTTON BACK               = {0x0A2, 1,    0x10, NULL, 14, NULL, 70};
+BUTTON HOME               = {0x0A2, 1,    0x08, NULL, 16, NULL, 23};
+BUTTON SCROLL_PRESSED     = {0x0A2, 1,    0x20, NULL, 18, NULL, 77};
+BUTTON PHONE              = {0x0A2, 2,    0x80, NULL, 21, NULL, 85};
+BUTTON VOICE_ASSIST       = {0x221, 0,    0x01, NULL, 33, NULL, 93};
 
-BUTTON SOURCE             = {0x0A2, 1, 0x04, 4, false, NULL};
-BUTTON BACK               = {0x0A2, 1, 0x10, 14, false, NULL};
-BUTTON HOME               = {0x0A2, 1, 0x08, 16, true, 23};
-BUTTON SCROLL_PRESSED     = {0x0A2, 1, 0x20, 18, false, NULL};
-BUTTON PHONE              = {0x0A2, 2, 0x80, 21, false, NULL};
+BUTTON WHEEL_BUTTON[12] = {};
 
-BUTTON VOICE_ASSIST       = {0x221, 0, 0x01, 6, false, NULL};
-// BUTTON NIGHT_MODE         = {0x036, 3, 0x36, 23, false, NULL};
+int buttonsCount = 12;
 
-BUTTON WHEEL_BUTTON[] = {
-  // VOL_UP, 
-  // VOL_DOWN, 
-  // MUTE, 
-  NEXT, 
-  PREVIOUS, 
-  // BACK, 
-  // SCROLL_PRESSED, 
-  // PHONE, 
-  // NIGHT_MODE,
-  HOME, 
-  LIST,
-  SOURCE, 
-  VOICE_ASSIST
-};
+CAN_PACKAGE CAN_VOLUME      = {0x1A5, 1, {0x14}, 500, 0};
+CAN_PACKAGE CAN_AMPLIFIER   = {0x165, 4, {0xC0, 0xC0, 0x60, 0x00}, 100, 0};
+CAN_PACKAGE CAN_EQUALIZER   = {0x1E5, 7, {0x3F, 0x3D, 0x42, 0x3F, 0x44, 0x40, 0x40}, 500, 0};
 
-int buttonsCount = sizeof(WHEEL_BUTTON) / sizeof(BUTTON);
+CAN_PACKAGE CAN_PACKAGES[3] = {};
 
-CAN_PACKAGE CAN_VOLUME = {0x1A5, 1, {0x14}, 500, 0};
-CAN_PACKAGE CAN_AMPLIFIER = {0x165, 4, {0xC0, 0xC0, 0x60, 0x00}, 100, 0};
-
-CAN_PACKAGE CAN_PACKAGES[] = {
-  CAN_VOLUME,                                                       // set volume
-  CAN_AMPLIFIER,                                                    // enable amplifier
-  // balance: 0; fader: -2; bass: +3; ..: 0; treble: +5; loudness + speed: true; false; preset: linear
-  {0x1E5, 7, {0x3F, 0x3D, 0x42, 0x3F, 0x44, 0x40, 0x40}, 500, 0}    // set equalizer config
-};
-
-int dataPackagesCount = sizeof(CAN_PACKAGES) / sizeof(CAN_PACKAGE);
+int dataPackagesCount = 3;
 
 // power down option
 unsigned long lastActivityOn = 0;
@@ -185,7 +223,67 @@ void setup(){
   set_sleep_mode(SLEEP_MODE_PWR_DOWN);
 
   loadConfig();
+  setConfig();
   Potentiometer.setWiper(POTENTIOMETER.resetState); 
+}
+
+void setConfig(){
+
+  AMPLIFIER.useDynamicVolume = CONFIG.amplifier_volume_dynamic == 1;
+  AMPLIFIER.maxVolume = CONFIG.amplifier_volume_max;
+  AMPLIFIER.volumeOffset = CONFIG.amplifier_volume_offset;
+
+  CAN_VOLUME.data[0] = CONFIG.amplifier_volume_fixed;
+
+  CAN_EQUALIZER.data[0] = CONFIG.equalzer_balance;
+  CAN_EQUALIZER.data[1] = CONFIG.equalzer_fader;
+  CAN_EQUALIZER.data[2] = CONFIG.equalzer_bass;
+  CAN_EQUALIZER.data[4] = CONFIG.equalzer_treble;
+  CAN_EQUALIZER.data[5] = CONFIG.equalzer_loudness + CONFIG.equalzer_speed_dependent_volume;
+  CAN_EQUALIZER.data[6] = CONFIG.equalzer_preset;
+
+  CAN_PACKAGES[0] = CAN_VOLUME;
+  CAN_PACKAGES[1] = CAN_AMPLIFIER;
+  CAN_PACKAGES[2] = CAN_EQUALIZER;
+
+  SCROLL.process                  = CONFIG.button_scroll_process == 1;
+  LIST.process                    = CONFIG.button_list_process == 1;
+  LIST.longPressEnabled           = CONFIG.button_list_long_press == 1;
+  VOL_UP.process                  = CONFIG.button_volume_up_process == 1;
+  VOL_UP.longPressEnabled         = CONFIG.button_volume_up_long_press == 1;
+  VOL_DOWN.process                = CONFIG.button_volume_up_process == 1;
+  VOL_DOWN.longPressEnabled       = CONFIG.button_volume_up_long_press == 1;
+  MUTE.process                    = CONFIG.button_mute_process == 1;
+  MUTE.longPressEnabled           = CONFIG.button_mute_long_press == 1;
+  NEXT.process                    = CONFIG.button_next_process == 1;
+  NEXT.longPressEnabled           = CONFIG.button_next_long_press == 1;
+  PREVIOUS.process                = CONFIG.button_previous_process == 1;
+  PREVIOUS.longPressEnabled       = CONFIG.button_previous_long_press == 1;
+  SOURCE.process                  = CONFIG.button_source_process == 1;
+  SOURCE.longPressEnabled         = CONFIG.button_source_long_press == 1;
+  BACK.process                    = CONFIG.button_back_process == 1;
+  BACK.longPressEnabled           = CONFIG.button_back_long_press == 1;
+  HOME.process                    = CONFIG.button_home_process == 1;
+  HOME.longPressEnabled           = CONFIG.button_home_long_press == 1;
+  SCROLL_PRESSED.process          = CONFIG.button_scroll_press_process == 1;
+  SCROLL_PRESSED.longPressEnabled = CONFIG.button_scroll_press_long_press == 1;
+  PHONE.process                   = CONFIG.button_phone_process == 1;
+  PHONE.longPressEnabled          = CONFIG.button_phone_long_press == 1;
+  VOICE_ASSIST.process            = CONFIG.button_voice_assistant_process == 1;
+  VOICE_ASSIST.longPressEnabled   = CONFIG.button_voice_assistant_long_press == 1;
+
+  WHEEL_BUTTON[0] = VOL_UP;
+  WHEEL_BUTTON[1] = VOL_DOWN; 
+  WHEEL_BUTTON[2] = MUTE; 
+  WHEEL_BUTTON[3] = NEXT;
+  WHEEL_BUTTON[4] = PREVIOUS; 
+  WHEEL_BUTTON[5] = BACK;
+  WHEEL_BUTTON[6] = SCROLL_PRESSED; 
+  WHEEL_BUTTON[7] = PHONE; 
+  WHEEL_BUTTON[8] = HOME; 
+  WHEEL_BUTTON[9] = LIST;
+  WHEEL_BUTTON[10] = SOURCE;
+  WHEEL_BUTTON[11] = VOICE_ASSIST;
 }
 
 void setupCanControllers(){
@@ -289,40 +387,74 @@ int getPackageIndex(unsigned long id){
 void saveConfig(){
   int address = 0;
 
-  for (int i = 0; i < dataPackagesCount; i++){
-    EEPROM.put(address, CAN_PACKAGES[i]);
-    address += sizeof(CAN_PACKAGE);
-  }
+  EEPROM.put(address, CONFIG);
 
   Serial.println("config saved");
 }
 
 void loadConfig(){
   int address = 0;
-  int index;
 
-  CAN_PACKAGE loadedData;
+  config loadedConfig;
 
-  for (int i = 0; i < dataPackagesCount; i++){
-    EEPROM.get(address, loadedData);
+  Serial.println("config version: " + String(EEPROM.read(address)));
 
-    index = getPackageIndex(loadedData.id);
-
-    if (index >= 0){
-      memcpy(CAN_PACKAGES[i].data, loadedData.data, 8);
-    }
-
-    if (loadedData.id == CAN_VOLUME.id){
-      memcpy(CAN_VOLUME.data, loadedData.data, 8);
-    }
-
-    address += sizeof(CAN_PACKAGE);
+  if(EEPROM.read(address) == CONFIG.config_version){
+    EEPROM.get(address, loadedConfig);
+    CONFIG = loadedConfig;
+    Serial.println("config loaded");
+  } else {
+    Serial.println("config not loaded");
   }
-
-  Serial.println("config loaded");
 }
 
 void getConfig(){
+
+  String config = "";
+
+  config += "1:" + String(CONFIG.amplifier_volume_dynamic) + ";";
+  config += "2:" + String(CONFIG.amplifier_volume_max) + ";";
+  config += "3:" + String(CONFIG.amplifier_volume_offset) + ";";
+  config += "4:" + String(CONFIG.amplifier_volume_fixed) + ";";
+  config += "5:" + String(CONFIG.equalzer_balance) + ";";
+  config += "6:" + String(CONFIG.equalzer_fader) + ";";
+  config += "7:" + String(CONFIG.equalzer_bass) + ";";
+  config += "8:" + String(CONFIG.equalzer_treble) + ";";
+  config += "9:" + String(CONFIG.equalzer_loudness) + ";";
+  config += "10:" + String(CONFIG.equalzer_speed_dependent_volume) + ";";
+  config += "11:" + String(CONFIG.equalzer_preset) + ";";
+
+  config += "12:" + String(CONFIG.button_list_process) + ";";
+  config += "13:" + String(CONFIG.button_list_long_press) + ";";
+  config += "14:" + String(CONFIG.button_volume_up_process) + ";";
+  config += "15:" + String(CONFIG.button_volume_up_long_press) + ";";
+  config += "16:" + String(CONFIG.button_volume_down_process) + ";";
+  config += "17:" + String(CONFIG.button_volume_down_long_press) + ";";
+  config += "18:" + String(CONFIG.button_mute_process) + ";";
+  config += "19:" + String(CONFIG.button_mute_long_press) + ";";
+  config += "20:" + String(CONFIG.button_next_process) + ";";
+  config += "21:" + String(CONFIG.button_next_long_press) + ";";
+  config += "22:" + String(CONFIG.button_previous_process) + ";";
+  config += "23:" + String(CONFIG.button_previous_long_press) + ";";
+
+  config += "24:" + String(CONFIG.button_source_process) + ";";
+  config += "25:" + String(CONFIG.button_source_long_press) + ";";
+  config += "26:" + String(CONFIG.button_back_process) + ";";
+  config += "27:" + String(CONFIG.button_back_long_press) + ";";
+  config += "28:" + String(CONFIG.button_home_process) + ";";
+  config += "29:" + String(CONFIG.button_home_long_press) + ";";
+  config += "30:" + String(CONFIG.button_scroll_press_process) + ";";
+  config += "31:" + String(CONFIG.button_scroll_press_long_press) + ";";
+  config += "32:" + String(CONFIG.button_phone_process) + ";";
+  config += "33:" + String(CONFIG.button_phone_long_press) + ";";
+  config += "34:" + String(CONFIG.button_voice_assistant_process) + ";";
+  config += "35:" + String(CONFIG.button_voice_assistant_long_press) + ";";
+  config += "36:" + String(CONFIG.button_scroll_process) + ";";
+
+  Serial.println(config);
+
+  return;
+
   for (int i = 0; i < dataPackagesCount; i++){
     String data = "";
 
@@ -418,7 +550,7 @@ void setScreenStatus(){
 
 void processWheelButton(){
   for (int i = 0; i < buttonsCount; i++){
-    if (rxId == WHEEL_BUTTON[i].id) {
+    if (rxId == WHEEL_BUTTON[i].id && WHEEL_BUTTON[i].process) {
       if (rxBuf[WHEEL_BUTTON[i].byteNum] == WHEEL_BUTTON[i].byteValue) {
         pressButton(i);
         rxBuf[WHEEL_BUTTON[i].byteNum] = 0x00;
@@ -429,7 +561,7 @@ void processWheelButton(){
     }
   }
 
-  if (rxId == SCROLL.id){
+  if (rxId == SCROLL.id && SCROLL.process){
     if (!SCROLL.position){
       SCROLL.position = rxBuf[SCROLL.byteNum];
     }
@@ -512,6 +644,20 @@ void processIncomingData (const char * data){
 
   if (line == "get config"){
     getConfig();
+  } else if (line.startsWith("set bass")) {
+    String parts[10];
+    stringSplit(parts, line, ':');
+
+    Serial.println("Parsed: " + parts[0] + ", " + parts[1]);
+
+    CONFIG.equalzer_bass = parts[1].toInt();
+
+    setConfig();
+
+    Serial.println("bass: " + String(CAN_EQUALIZER.data[2]));
+
+    saveConfig();
+
   } else {
     parseConfig(line);
   }
