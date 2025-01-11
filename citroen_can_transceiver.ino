@@ -141,12 +141,13 @@ int buttonsCount = sizeof(WHEEL_BUTTON) / sizeof(BUTTON);
 
 CAN_PACKAGE CAN_VOLUME = {0x1A5, 1, {0x14}, 500, 0};
 CAN_PACKAGE CAN_AMPLIFIER = {0x165, 4, {0xC0, 0xC0, 0x60, 0x00}, 100, 0};
+// balance: 0; fader: -2; bass: +3; ..: 0; treble: +5; loudness + speed: true; false; preset: linear
+CAN_PACKAGE CAN_EQUALIZER = {0x1E5, 7, {0x3F, 0x3D, 0x42, 0x3F, 0x44, 0x40, 0x40}, 500, 0};
 
 CAN_PACKAGE CAN_PACKAGES[] = {
-  CAN_VOLUME,                                                       // set volume
-  CAN_AMPLIFIER,                                                    // enable amplifier
-  // balance: 0; fader: -2; bass: +3; ..: 0; treble: +5; loudness + speed: true; false; preset: linear
-  {0x1E5, 7, {0x3F, 0x3D, 0x42, 0x3F, 0x44, 0x40, 0x40}, 500, 0}    // set equalizer config
+  CAN_VOLUME,       // set volume
+  CAN_AMPLIFIER,    // enable amplifier
+  CAN_EQUALIZER     // set equalizer config
 };
 
 int dataPackagesCount = sizeof(CAN_PACKAGES) / sizeof(CAN_PACKAGE);
@@ -269,7 +270,7 @@ void parseConfig(String config){
 
   memcpy(CAN_PACKAGES[packageIndex].data, data, 8);
 
-  saveConfig();
+  //saveConfig();
 }
 
 int getPackageIndex(unsigned long id){
@@ -323,22 +324,24 @@ void loadConfig(){
 }
 
 void getConfig(){
-  for (int i = 0; i < dataPackagesCount; i++){
-    String data = "";
+  int packageIndex = getPackageIndex(CAN_EQUALIZER.id);
+  String data = "";
 
-    for (int d = 0; d < CAN_PACKAGES[i].dlc; d++){
+  //for (int i = 0; i < dataPackagesCount; i++){
+    
+    for (int d = 0; d < CAN_PACKAGES[packageIndex].dlc; d++){
       data += " 0x";
 
-      if (CAN_PACKAGES[i].data[d] < 16) 
+      if (CAN_PACKAGES[packageIndex].data[d] < 16) 
         data += "0";
       
-      data += String(CAN_PACKAGES[i].data[d], HEX);
+      data += String(CAN_PACKAGES[packageIndex].data[d], HEX);
     }
 
     data.trim();
 
-    Serial.println("0x" + String(CAN_PACKAGES[i].id, HEX) + ";" + data);
-  }
+    Serial.println("0x" + String(CAN_PACKAGES[packageIndex].id, HEX) + ";" + data);
+  //}
 }
 
 bool isForbiddenPackage(){
@@ -512,6 +515,8 @@ void processIncomingData (const char * data){
 
   if (line == "get config"){
     getConfig();
+  } else if (line == "save config") {
+    saveConfig();
   } else {
     parseConfig(line);
   }
