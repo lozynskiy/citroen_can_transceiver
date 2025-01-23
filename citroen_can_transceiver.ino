@@ -34,6 +34,8 @@ Volume:
 #include <avr/sleep.h>
 #include <MCP41_Simple.h>
 
+const byte CONFIGURATION_VER = 1;
+
 struct CAN_PACKAGE {
   unsigned long id;
   byte dlc;
@@ -46,7 +48,7 @@ struct IGNITION {
   unsigned long id = 0x0F6;
   int byteNum = 0;
   byte byteValue = 0x08;
-  bool on = false;
+  bool on = true;
   int offDelay = 2500;
   unsigned long switchedOffTime = 0;
   unsigned long switchedOnTime = 0;
@@ -137,7 +139,7 @@ BUTTON WHEEL_BUTTON[] = {
   VOICE_ASSIST
 };
 
-int buttonsCount = sizeof(WHEEL_BUTTON) / sizeof(BUTTON);
+const int buttonsCount = sizeof(WHEEL_BUTTON) / sizeof(BUTTON);
 
 CAN_PACKAGE CAN_VOLUME = {0x1A5, 1, {0x14}, 500, 0};
 CAN_PACKAGE CAN_AMPLIFIER = {0x165, 4, {0xC0, 0xC0, 0x60, 0x00}, 100, 0};
@@ -150,11 +152,23 @@ CAN_PACKAGE CAN_PACKAGES[] = {
   CAN_EQUALIZER     // set equalizer config
 };
 
-int dataPackagesCount = sizeof(CAN_PACKAGES) / sizeof(CAN_PACKAGE);
+const int dataPackagesCount = sizeof(CAN_PACKAGES) / sizeof(CAN_PACKAGE);
+
+// struct CONFIG {
+//   byte version = 1;
+//   BUTTON WHEEL_BUTTON[buttonsCount];
+//   CAN_PACKAGE CAN_PACKAGES[dataPackagesCount];
+// } CONFIG;
 
 // power down option
 unsigned long lastActivityOn = 0;
 unsigned long powerDownDelay = 5000;
+
+unsigned long messageSentOn = 0;
+const short messages = 4;
+String delayedMessages[messages] = {"", "", "", ""};
+int availableMessages = 0;
+const int messageDelay = 50;
 
 unsigned long rxId;
 byte len;
@@ -253,24 +267,40 @@ void parseConfig(String config){
   String parts[10];
   stringSplit(parts, config, ';');
 
-  int packageIndex = getPackageIndex(parseAsHex(parts[0]));
-
-  if (packageIndex == -1){
-    Serial.println("wrong value");
+  // validate
+  if (parts[1].length() != parts[2].toInt()) {
+    Serial.println("wrong config");
     return;
   }
 
-  String dataParts[8];
-  byte data[8];
+  String dataParts[9];
   stringSplit(dataParts, parts[1], ' ');
 
-  for (int i = 0; i < CAN_PACKAGES[packageIndex].dlc; i++){
-    data[i] = parseAsHex(dataParts[i]);
+  int packageIndex = getPackageIndex(parseAsHex(parts[0]));
+
+  if (packageIndex != -1) {
+    byte data[8];
+
+    for (int i = 0; i < CAN_PACKAGES[packageIndex].dlc; i++){
+      data[i] = parseAsHex(dataParts[i]);
+    }
+
+    memcpy(CAN_PACKAGES[packageIndex].data, data, 8);
+
+    return;
   }
 
-  memcpy(CAN_PACKAGES[packageIndex].data, data, 8);
+  if (parts[0] == "0x000") {
+    packageIndex = getPackageIndex(CAN_VOLUME.id);
 
-  //saveConfig();
+    CAN_PACKAGES[packageIndex].data[0] = dataParts[1].toInt();
+
+    AMPLIFIER.useDynamicVolume = dataParts[0] == "1";
+    AMPLIFIER.maxVolume = dataParts[1].toInt();
+    AMPLIFIER.volumeOffset = dataParts[2].toInt();
+
+    return;
+  }
 }
 
 int getPackageIndex(unsigned long id){
@@ -290,10 +320,17 @@ int getPackageIndex(unsigned long id){
 void saveConfig(){
   int address = 0;
 
+  EEPROM.put(address, CONFIGURATION_VER);
+
+  address += 1;
+
   for (int i = 0; i < dataPackagesCount; i++){
     EEPROM.put(address, CAN_PACKAGES[i]);
     address += sizeof(CAN_PACKAGE);
   }
+
+  EEPROM.put(address, AMPLIFIER);
+  address += sizeof(AMPLIFIER);
 
   Serial.println("config saved");
 }
@@ -302,23 +339,30 @@ void loadConfig(){
   int address = 0;
   int index;
 
-  CAN_PACKAGE loadedData;
+  CAN_PACKAGE canLoadedData;
+
+  if (byte(EEPROM.read(0)) != CONFIGURATION_VER) {
+    Serial.println("config is not loaded");
+    return;
+  }
+
+  address += 1;
 
   for (int i = 0; i < dataPackagesCount; i++){
-    EEPROM.get(address, loadedData);
+    EEPROM.get(address, canLoadedData);
 
-    index = getPackageIndex(loadedData.id);
+    index = getPackageIndex(canLoadedData.id);
 
     if (index >= 0){
-      memcpy(CAN_PACKAGES[i].data, loadedData.data, 8);
-    }
-
-    if (loadedData.id == CAN_VOLUME.id){
-      memcpy(CAN_VOLUME.data, loadedData.data, 8);
+      memcpy(CAN_PACKAGES[i].data, canLoadedData.data, 8);
     }
 
     address += sizeof(CAN_PACKAGE);
   }
+
+  EEPROM.get(address, AMPLIFIER);
+
+  address += sizeof(AMPLIFIER);
 
   Serial.println("config loaded");
 }
@@ -340,8 +384,50 @@ void getConfig(){
 
     data.trim();
 
-    Serial.println("0x" + String(CAN_PACKAGES[packageIndex].id, HEX) + ";" + data);
+    addDelayedMessage("0x" + String(CAN_PACKAGES[packageIndex].id, HEX) + ";" + data + ";" + String(data.length()));
+
+    data = String(AMPLIFIER.useDynamicVolume) + " " + String(AMPLIFIER.maxVolume) + 
+      " " + String(AMPLIFIER.volumeOffset);
+
+    addDelayedMessage("0x000;" + data + ";" + String(data.length()));
+
+    //Serial.println("0x" + String(CAN_PACKAGES[packageIndex].id, HEX) + ";" + data + "|" +
+    //  "0x000;" + String(AMPLIFIER.useDynamicVolume) + " " + String(AMPLIFIER.maxVolume) + 
+    //  " " + String(AMPLIFIER.volumeOffset));
   //}
+}
+
+void addDelayedMessage(String message) {
+  for (int i = 0; i < messages; i ++) {
+    if (delayedMessages[i] != "") {
+      continue;
+    }
+
+    delayedMessages[i] = message;
+    availableMessages ++;
+    
+    return;
+  }
+}
+
+void sendDelayedMessage() {
+
+  if (availableMessages = 0 || millis() - messageSentOn < messageDelay) {
+    return;
+  }
+
+  for (int i = 0; i < messages; i ++) {
+    if (delayedMessages[i] == "") {
+       continue;
+     }
+
+    Serial.println(delayedMessages[i]);
+    delayedMessages[i] = "";
+    availableMessages --;
+    messageSentOn = millis();
+      
+    return;
+  }
 }
 
 bool isForbiddenPackage(){
@@ -585,6 +671,8 @@ void processCan(){
     processIncomingByte(Serial.read());
   }
   
+  sendDelayedMessage();
+
   if(!digitalRead(CAN1_INT) && CAN1.readMsgBuf(&rxId, &len, rxBuf) == CAN_OK){
 
     // if (!(rxId == 0x165 || rxId == 0x3e5 || rxId == 0x1a5 || rxId == 0x1e5 || rxId == 0x167 || rxId == 0x1a9 || rxId == 0x1a3 || rxId == 0x164)) {
