@@ -34,8 +34,6 @@ Volume:
 #include <avr/sleep.h>
 #include <MCP41_Simple.h>
 
-const byte CONFIGURATION_VER = 1;
-
 struct CAN_PACKAGE {
   unsigned long id;
   byte dlc;
@@ -58,17 +56,21 @@ struct BUTTON {
   unsigned long id;
   int byteNum;
   byte byteValue;
+  bool remap;
   int shortPressTap;
   bool longPressEnabled;
   int longPressTap;
+  int configValue;
 };
 
 struct SCROLL {
   unsigned long id;
   byte position;
   int byteNum;
+  bool remap;
   int up;
   int down;
+  int configValue;
 };
 
 struct POTENTIOMETER {
@@ -76,13 +78,13 @@ struct POTENTIOMETER {
   int resetDelay = 150;
   int currentState = 255;
   int resetState = 255;
-};
+} POTENTIOMETER;
 
 struct PRESSED_BUTTON {
   int index = -1;
   unsigned long pressedOn;
   int longPressDuration = 500;
-};
+} PRESSED_BUTTON;
 
 struct AMPLIFIER {
   bool useDynamicVolume = true;
@@ -90,6 +92,10 @@ struct AMPLIFIER {
   int maxVolume = 29;
   int volumeOffset = 5;
   unsigned long powerOnDelay = 2000;
+  unsigned long canVolumeId = 0x1A5;
+  unsigned long canAmplifierId = 0x165;
+  unsigned long canEqualizerId = 0x1E5;
+  byte dynamicVolumeValue = 0x14;
 };
 
 struct SCREEN_STATUS {
@@ -99,66 +105,36 @@ struct SCREEN_STATUS {
   byte currentByte = 0x00;
   bool screenEnabled = true;
   int potentiometerTap = 23;
-};
+} SCREEN_STATUS;
 
-SCREEN_STATUS SCREEN_STATUS;
-AMPLIFIER AMPLIFIER;
-POTENTIOMETER POTENTIOMETER;
-PRESSED_BUTTON PRESSED_BUTTON;
-SCROLL SCROLL;//             = {0x0A2, NULL, 0, 26, 29};
+const int buttonsCount = 12; //sizeof(WHEEL_BUTTON) / sizeof(BUTTON);
+const int dataPackagesCount = 3; //sizeof(CAN_PACKAGES) / sizeof(CAN_PACKAGE);
 
-BUTTON LIST               = {0x21F, 0, 0x01, 2, false, NULL};
-BUTTON VOL_UP             = {0x21F, 0, 0x08, 3, false, NULL};
-BUTTON VOL_DOWN           = {0x21F, 0, 0x04, 6, false, NULL};
-BUTTON MUTE               = {0x21F, 0, 0x0C, 8, false, NULL};
-BUTTON NEXT               = {0x21F, 0, 0x40, 10, true, 26};
-BUTTON PREVIOUS           = {0x21F, 0, 0x80, 12, true, 29};
-
-BUTTON SOURCE             = {0x0A2, 1, 0x04, 4, false, NULL};
-BUTTON BACK               = {0x0A2, 1, 0x10, 14, false, NULL};
-BUTTON HOME               = {0x0A2, 1, 0x08, 16, true, 23};
-BUTTON SCROLL_PRESSED     = {0x0A2, 1, 0x20, 18, false, NULL};
-BUTTON PHONE              = {0x0A2, 2, 0x80, 21, false, NULL};
-
-BUTTON VOICE_ASSIST       = {0x221, 0, 0x01, 6, false, NULL};
-// BUTTON NIGHT_MODE         = {0x036, 3, 0x36, 23, false, NULL};
-
-BUTTON WHEEL_BUTTON[] = {
-  // VOL_UP, 
-  // VOL_DOWN, 
-  // MUTE, 
-  NEXT, 
-  PREVIOUS, 
-  // BACK, 
-  // SCROLL_PRESSED, 
-  // PHONE, 
-  // NIGHT_MODE,
-  HOME, 
-  LIST,
-  SOURCE, 
-  VOICE_ASSIST
-};
-
-const int buttonsCount = sizeof(WHEEL_BUTTON) / sizeof(BUTTON);
-
-CAN_PACKAGE CAN_VOLUME = {0x1A5, 1, {0x14}, 500, 0};
-CAN_PACKAGE CAN_AMPLIFIER = {0x165, 4, {0xC0, 0xC0, 0x60, 0x00}, 100, 0};
-// balance: 0; fader: -2; bass: +3; ..: 0; treble: +5; loudness + speed: true; false; preset: linear
-CAN_PACKAGE CAN_EQUALIZER = {0x1E5, 7, {0x3F, 0x3D, 0x42, 0x3F, 0x44, 0x40, 0x40}, 500, 0};
-
-CAN_PACKAGE CAN_PACKAGES[] = {
-  CAN_VOLUME,       // set volume
-  CAN_AMPLIFIER,    // enable amplifier
-  CAN_EQUALIZER     // set equalizer config
-};
-
-const int dataPackagesCount = sizeof(CAN_PACKAGES) / sizeof(CAN_PACKAGE);
-
-// struct CONFIG {
-//   byte version = 1;
-//   BUTTON WHEEL_BUTTON[buttonsCount];
-//   CAN_PACKAGE CAN_PACKAGES[dataPackagesCount];
-// } CONFIG;
+struct CONFIG {
+  byte version = 3;
+  BUTTON WHEEL_BUTTON[buttonsCount] = {
+    {0x21F, 0, 0x08, false, 3,  false,  33,     1},       // VOL_UP
+    {0x21F, 0, 0x04, false, 0,  false,  36,     2},       // VOL_DOWN
+    {0x21F, 0, 0x0C, false, 8,  false,  40,     4},       // MUTE
+    {0x21F, 0, 0x40, true,  10, true,   26,     8},       // NEXT
+    {0x21F, 0, 0x80, true,  12, true,   29,     16},      // PREVIOUS
+    {0x0A2, 1, 0x10, false, 14, false,  43,     32},      // BACK
+    {0x0A2, 1, 0x08, true,  16, true,   23,     64},      // HOME
+    {0x21F, 0, 0x01, true,  2,  false,  48,     128},     // LIST
+    {0x0A2, 2, 0x80, false, 21, false,  53,     256},     // PHONE
+    {0x0A2, 1, 0x04, true,  4,  false,  NULL,   512},     // SOURCE
+    {0x221, 0, 0x01, true,  6,  false,  NULL,   1024},    // VOICE_ASSIST
+    {0x0A2, 1, 0x20, false, 18, false,  NULL,   2048}     // SCROLL_PRESSED
+  };
+  CAN_PACKAGE CAN_PACKAGES[dataPackagesCount] = {
+    {0x1A5, 1, {0x14}, 500, 0},                                           // CAN_VOLUME
+    {0x165, 4, {0xC0, 0xC0, 0x60, 0x00}, 100, 0},                         // CAN_AMPLIFIER
+    // balance: 0; fader: -2; bass: +3; ..: 0; treble: +5; loudness + speed: true; false; preset: linear
+    {0x1E5, 7, {0x3F, 0x3D, 0x42, 0x3F, 0x44, 0x40, 0x40}, 500, 0}       // CAN_EQUALIZER
+  };
+  SCROLL SCROLL = {0x0A2, NULL, 0, false, 58, 64, 4096};
+  AMPLIFIER AMPLIFIER;
+} CONFIG;
 
 // power down option
 unsigned long lastActivityOn = 0;
@@ -281,23 +257,37 @@ void parseConfig(String config){
   if (packageIndex != -1) {
     byte data[8];
 
-    for (int i = 0; i < CAN_PACKAGES[packageIndex].dlc; i++){
+    for (int i = 0; i < CONFIG.CAN_PACKAGES[packageIndex].dlc; i++){
       data[i] = parseAsHex(dataParts[i]);
     }
 
-    memcpy(CAN_PACKAGES[packageIndex].data, data, 8);
+    memcpy(CONFIG.CAN_PACKAGES[packageIndex].data, data, 8);
 
     return;
   }
 
   if (parts[0] == "0x000") {
-    packageIndex = getPackageIndex(CAN_VOLUME.id);
+    packageIndex = getPackageIndex(CONFIG.AMPLIFIER.canVolumeId);
 
-    CAN_PACKAGES[packageIndex].data[0] = dataParts[1].toInt();
+    CONFIG.CAN_PACKAGES[packageIndex].data[0] = dataParts[1].toInt();
 
-    AMPLIFIER.useDynamicVolume = dataParts[0] == "1";
-    AMPLIFIER.maxVolume = dataParts[1].toInt();
-    AMPLIFIER.volumeOffset = dataParts[2].toInt();
+    CONFIG.AMPLIFIER.useDynamicVolume = dataParts[0] == "1";
+    CONFIG.AMPLIFIER.maxVolume = dataParts[1].toInt();
+    CONFIG.AMPLIFIER.volumeOffset = dataParts[2].toInt();
+
+    return;
+  }
+
+  if (parts[0] == "0x001") {
+    int remapData = dataParts[0].toInt();
+    int longPressData = dataParts[1].toInt();
+
+    for (int i = 0; i < buttonsCount; i++) {
+      CONFIG.WHEEL_BUTTON[i].remap = (CONFIG.WHEEL_BUTTON[i].configValue & remapData) > 0;
+      CONFIG.WHEEL_BUTTON[i].longPressEnabled = (CONFIG.WHEEL_BUTTON[i].configValue & longPressData) > 0;
+    }
+    
+    CONFIG.SCROLL.remap = (CONFIG.SCROLL.configValue & remapData) > 0;
 
     return;
   }
@@ -307,7 +297,7 @@ int getPackageIndex(unsigned long id){
   int index = -1;
 
   for (int i = 0; i < dataPackagesCount; i++){
-    if(id == CAN_PACKAGES[i].id){
+    if(id == CONFIG.CAN_PACKAGES[i].id){
       index = i;
 
       break;
@@ -320,81 +310,60 @@ int getPackageIndex(unsigned long id){
 void saveConfig(){
   int address = 0;
 
-  EEPROM.put(address, CONFIGURATION_VER);
-
-  address += 1;
-
-  for (int i = 0; i < dataPackagesCount; i++){
-    EEPROM.put(address, CAN_PACKAGES[i]);
-    address += sizeof(CAN_PACKAGE);
-  }
-
-  EEPROM.put(address, AMPLIFIER);
-  address += sizeof(AMPLIFIER);
+  EEPROM.put(address, CONFIG);
 
   Serial.println("config saved");
 }
 
 void loadConfig(){
   int address = 0;
-  int index;
 
-  CAN_PACKAGE canLoadedData;
-
-  if (byte(EEPROM.read(0)) != CONFIGURATION_VER) {
+  if (byte(EEPROM.read(0)) != CONFIG.version) {
     Serial.println("config is not loaded");
     return;
   }
 
-  address += 1;
-
-  for (int i = 0; i < dataPackagesCount; i++){
-    EEPROM.get(address, canLoadedData);
-
-    index = getPackageIndex(canLoadedData.id);
-
-    if (index >= 0){
-      memcpy(CAN_PACKAGES[i].data, canLoadedData.data, 8);
-    }
-
-    address += sizeof(CAN_PACKAGE);
-  }
-
-  EEPROM.get(address, AMPLIFIER);
-
-  address += sizeof(AMPLIFIER);
+  EEPROM.get(address, CONFIG);
 
   Serial.println("config loaded");
 }
 
 void getConfig(){
-  int packageIndex = getPackageIndex(CAN_EQUALIZER.id);
+  int packageIndex = getPackageIndex(CONFIG.AMPLIFIER.canEqualizerId);
   String data = "";
+  int remapButtonData = 0;
+  int longPressButtonData = 0;
 
   //for (int i = 0; i < dataPackagesCount; i++){
     
-    for (int d = 0; d < CAN_PACKAGES[packageIndex].dlc; d++){
+    for (int d = 0; d < CONFIG.CAN_PACKAGES[packageIndex].dlc; d++){
       data += " 0x";
 
-      if (CAN_PACKAGES[packageIndex].data[d] < 16) 
+      if (CONFIG.CAN_PACKAGES[packageIndex].data[d] < 16) 
         data += "0";
       
-      data += String(CAN_PACKAGES[packageIndex].data[d], HEX);
+      data += String(CONFIG.CAN_PACKAGES[packageIndex].data[d], HEX);
     }
 
     data.trim();
 
-    addDelayedMessage("0x" + String(CAN_PACKAGES[packageIndex].id, HEX) + ";" + data + ";" + String(data.length()));
+    addDelayedMessage("0x" + String(CONFIG.CAN_PACKAGES[packageIndex].id, HEX) + ";" + data + ";" + String(data.length()));
 
-    data = String(AMPLIFIER.useDynamicVolume) + " " + String(AMPLIFIER.maxVolume) + 
-      " " + String(AMPLIFIER.volumeOffset);
+    data = String(CONFIG.AMPLIFIER.useDynamicVolume) + " " + String(CONFIG.AMPLIFIER.maxVolume) + 
+      " " + String(CONFIG.AMPLIFIER.volumeOffset);
 
     addDelayedMessage("0x000;" + data + ";" + String(data.length()));
 
-    //Serial.println("0x" + String(CAN_PACKAGES[packageIndex].id, HEX) + ";" + data + "|" +
-    //  "0x000;" + String(AMPLIFIER.useDynamicVolume) + " " + String(AMPLIFIER.maxVolume) + 
-    //  " " + String(AMPLIFIER.volumeOffset));
-  //}
+    for (int i = 0; i < buttonsCount; i++){
+      remapButtonData += CONFIG.WHEEL_BUTTON[i].remap ? CONFIG.WHEEL_BUTTON[i].configValue : 0;
+      longPressButtonData += CONFIG.WHEEL_BUTTON[i].longPressEnabled ? CONFIG.WHEEL_BUTTON[i].configValue : 0;
+    }
+
+    remapButtonData += CONFIG.SCROLL.remap ? CONFIG.SCROLL.configValue : 0;
+
+    data = String(remapButtonData) + " " + String(longPressButtonData);
+
+    addDelayedMessage("0x001;" + data + ";" + String(String(data).length()));
 }
 
 void addDelayedMessage(String message) {
@@ -432,7 +401,7 @@ void sendDelayedMessage() {
 
 bool isForbiddenPackage(){
   for (int i = 0; i < dataPackagesCount; i++){
-    if (rxId == CAN_PACKAGES[i].id) return true;
+    if (rxId == CONFIG.CAN_PACKAGES[i].id) return true;
   }
 
   return false;
@@ -440,19 +409,19 @@ bool isForbiddenPackage(){
 
 void sendData(){
   for (int i = 0; i < dataPackagesCount; i++){
-    if(millis() - CAN_PACKAGES[i].lastMillis >= CAN_PACKAGES[i].period){
+    if(millis() - CONFIG.CAN_PACKAGES[i].lastMillis >= CONFIG.CAN_PACKAGES[i].period){
 
-      if (CAN_PACKAGES[i].id == CAN_AMPLIFIER.id && millis() - IGNITION.switchedOnTime < AMPLIFIER.powerOnDelay){
+      if (CONFIG.CAN_PACKAGES[i].id == CONFIG.AMPLIFIER.canAmplifierId && millis() - IGNITION.switchedOnTime < CONFIG.AMPLIFIER.powerOnDelay){
         continue;
       }
 
-      if (AMPLIFIER.useDynamicVolume && CAN_PACKAGES[i].id == CAN_VOLUME.id){
-        CAN0.sendMsgBuf(CAN_VOLUME.id, CAN_VOLUME.dlc, CAN_VOLUME.data);
+      if (CONFIG.AMPLIFIER.useDynamicVolume && CONFIG.CAN_PACKAGES[i].id == CONFIG.AMPLIFIER.canVolumeId){
+        CAN0.sendMsgBuf(CONFIG.CAN_PACKAGES[i].id, CONFIG.CAN_PACKAGES[i].dlc, {CONFIG.AMPLIFIER.dynamicVolumeValue});
       } else {
-        CAN0.sendMsgBuf(CAN_PACKAGES[i].id, CAN_PACKAGES[i].dlc, CAN_PACKAGES[i].data);
+        CAN0.sendMsgBuf(CONFIG.CAN_PACKAGES[i].id, CONFIG.CAN_PACKAGES[i].dlc, CONFIG.CAN_PACKAGES[i].data);
       }
 
-      CAN_PACKAGES[i].lastMillis = millis();
+      CONFIG.CAN_PACKAGES[i].lastMillis = millis();
     }
   }
 }
@@ -507,10 +476,10 @@ void setScreenStatus(){
 
 void processWheelButton(){
   for (int i = 0; i < buttonsCount; i++){
-    if (rxId == WHEEL_BUTTON[i].id) {
-      if (rxBuf[WHEEL_BUTTON[i].byteNum] == WHEEL_BUTTON[i].byteValue) {
+    if (rxId == CONFIG.WHEEL_BUTTON[i].id && CONFIG.WHEEL_BUTTON[i].remap == true) {
+      if (rxBuf[CONFIG.WHEEL_BUTTON[i].byteNum] == CONFIG.WHEEL_BUTTON[i].byteValue) {
         pressButton(i);
-        rxBuf[WHEEL_BUTTON[i].byteNum] = 0x00;
+        rxBuf[CONFIG.WHEEL_BUTTON[i].byteNum] = 0x00;
         return;
       } else {
         releaseButton(i);
@@ -518,19 +487,19 @@ void processWheelButton(){
     }
   }
 
-  if (rxId == SCROLL.id){
-    if (!SCROLL.position){
-      SCROLL.position = rxBuf[SCROLL.byteNum];
+  if (rxId == CONFIG.SCROLL.id && CONFIG.SCROLL.remap == true){
+    if (!CONFIG.SCROLL.position){
+      CONFIG.SCROLL.position = rxBuf[CONFIG.SCROLL.byteNum];
     }
 
-    if (SCROLL.position != rxBuf[SCROLL.byteNum]){
-      if (rxBuf[SCROLL.byteNum] > SCROLL.position){
-        setPotentiometer(SCROLL.up);
+    if (CONFIG.SCROLL.position != rxBuf[CONFIG.SCROLL.byteNum]){
+      if (rxBuf[CONFIG.SCROLL.byteNum] > CONFIG.SCROLL.position){
+        setPotentiometer(CONFIG.SCROLL.up);
       } else {
-        setPotentiometer(SCROLL.down);
+        setPotentiometer(CONFIG.SCROLL.down);
       }
-      SCROLL.position = rxBuf[SCROLL.byteNum];
-      rxBuf[SCROLL.byteNum] = 0x00;
+      CONFIG.SCROLL.position = rxBuf[CONFIG.SCROLL.byteNum];
+      rxBuf[CONFIG.SCROLL.byteNum] = 0x00;
 
       return;
     }
@@ -543,7 +512,8 @@ void processWheelButton(){
 }
 
 bool isButtonLongPress(int index) {
-  if (WHEEL_BUTTON[index].longPressEnabled == true && (millis() - PRESSED_BUTTON.pressedOn) > PRESSED_BUTTON.longPressDuration){
+  if (CONFIG.WHEEL_BUTTON[index].longPressEnabled == true
+          && (millis() - PRESSED_BUTTON.pressedOn) > PRESSED_BUTTON.longPressDuration){
     return true;
   }
   return false;
@@ -552,9 +522,9 @@ bool isButtonLongPress(int index) {
 int getButtonTap(int index) {
   int tap  = POTENTIOMETER.resetState;
   if (isButtonLongPress(index)){
-    tap = WHEEL_BUTTON[index].longPressTap;
+    tap = CONFIG.WHEEL_BUTTON[index].longPressTap;
   } else {
-    tap = WHEEL_BUTTON[index].shortPressTap;
+    tap = CONFIG.WHEEL_BUTTON[index].shortPressTap;
   }
 
   return tap;
@@ -564,7 +534,7 @@ void pressButton (int index){
   if (PRESSED_BUTTON.index != index){
     PRESSED_BUTTON.index = index;
     PRESSED_BUTTON.pressedOn = millis();
-  } else if (isButtonLongPress(index) == true || WHEEL_BUTTON[index].longPressEnabled == false) {
+  } else if (isButtonLongPress(index) == true || CONFIG.WHEEL_BUTTON[index].longPressEnabled == false) {
     // hold button already reach long press state, set potentiometer value
     setPotentiometer(getButtonTap(index));
     //Serial.println("pressed: " + String(getButtonTap(index)) + ", duration: " + String(millis() - PRESSED_BUTTON.pressedOn));
@@ -631,18 +601,19 @@ void processIncomingByte (const byte inByte){
 }
 
 void setDynamicVolume(){
-  if (!AMPLIFIER.useDynamicVolume){
+  if (!CONFIG.AMPLIFIER.useDynamicVolume){
     return;
   }
   
-  if (rxId == CAN_VOLUME.id && (rxBuf[AMPLIFIER.dynamicVolumeByteNum] >= 0 && rxBuf[AMPLIFIER.dynamicVolumeByteNum] <= AMPLIFIER.maxVolume)){
-    
-    byte volume = rxBuf[AMPLIFIER.dynamicVolumeByteNum] + AMPLIFIER.volumeOffset;
+  if (rxId == CONFIG.AMPLIFIER.canVolumeId && (rxBuf[CONFIG.AMPLIFIER.dynamicVolumeByteNum] >= 0 && rxBuf[CONFIG.AMPLIFIER.dynamicVolumeByteNum] <= CONFIG.AMPLIFIER.maxVolume)) {
+    int canVolumeIndex = getPackageIndex(CONFIG.AMPLIFIER.canVolumeId);
 
-    volume = rxBuf[AMPLIFIER.dynamicVolumeByteNum] == 0 ? 0 : volume;
-    volume = volume > AMPLIFIER.maxVolume ? AMPLIFIER.maxVolume : volume;
+    byte volume = rxBuf[CONFIG.AMPLIFIER.dynamicVolumeByteNum] + CONFIG.AMPLIFIER.volumeOffset;
 
-    CAN_VOLUME.data[AMPLIFIER.dynamicVolumeByteNum] = volume;
+    volume = rxBuf[CONFIG.AMPLIFIER.dynamicVolumeByteNum] == 0 ? 0 : volume;
+    volume = volume > CONFIG.AMPLIFIER.maxVolume ? CONFIG.AMPLIFIER.maxVolume : volume;
+
+    CONFIG.AMPLIFIER.dynamicVolumeValue = volume;
   }
 }
 
