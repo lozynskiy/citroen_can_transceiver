@@ -46,7 +46,7 @@ struct IGNITION {
   unsigned long id = 0x0F6;
   int byteNum = 0;
   byte byteValue = 0x08;
-  bool on = true;
+  bool on = false;
   int offDelay = 2500;
   unsigned long switchedOffTime = 0;
   unsigned long switchedOnTime = 0;
@@ -95,7 +95,7 @@ struct AMPLIFIER {
   unsigned long canVolumeId = 0x1A5;
   unsigned long canAmplifierId = 0x165;
   unsigned long canEqualizerId = 0x1E5;
-  byte dynamicVolumeValue = 0x14;
+  byte dynamicVolume[1] = {0x14};
 };
 
 struct SCREEN_STATUS {
@@ -111,7 +111,7 @@ const int buttonsCount = 12; //sizeof(WHEEL_BUTTON) / sizeof(BUTTON);
 const int dataPackagesCount = 3; //sizeof(CAN_PACKAGES) / sizeof(CAN_PACKAGE);
 
 struct CONFIG {
-  byte version = 3;
+  byte version = 4;
   BUTTON WHEEL_BUTTON[buttonsCount] = {
     {0x21F, 0, 0x08, false, 3,  false,  33,     1},       // VOL_UP
     {0x21F, 0, 0x04, false, 0,  false,  36,     2},       // VOL_DOWN
@@ -416,7 +416,7 @@ void sendData(){
       }
 
       if (CONFIG.AMPLIFIER.useDynamicVolume && CONFIG.CAN_PACKAGES[i].id == CONFIG.AMPLIFIER.canVolumeId){
-        CAN0.sendMsgBuf(CONFIG.CAN_PACKAGES[i].id, CONFIG.CAN_PACKAGES[i].dlc, {CONFIG.AMPLIFIER.dynamicVolumeValue});
+        CAN0.sendMsgBuf(CONFIG.CAN_PACKAGES[i].id, CONFIG.CAN_PACKAGES[i].dlc, CONFIG.AMPLIFIER.dynamicVolume);
       } else {
         CAN0.sendMsgBuf(CONFIG.CAN_PACKAGES[i].id, CONFIG.CAN_PACKAGES[i].dlc, CONFIG.CAN_PACKAGES[i].data);
       }
@@ -613,7 +613,7 @@ void setDynamicVolume(){
     volume = rxBuf[CONFIG.AMPLIFIER.dynamicVolumeByteNum] == 0 ? 0 : volume;
     volume = volume > CONFIG.AMPLIFIER.maxVolume ? CONFIG.AMPLIFIER.maxVolume : volume;
 
-    CONFIG.AMPLIFIER.dynamicVolumeValue = volume;
+    CONFIG.AMPLIFIER.dynamicVolume[0] = volume;
   }
 }
 
@@ -622,9 +622,12 @@ void processCan(){
   if(!digitalRead(CAN0_INT) && CAN0.readMsgBuf(&rxId, &len, rxBuf) == CAN_OK){
     lastActivityOn = millis();
 
-    // if (rxId == 0x036) {
-    //   Serial.println("receive: " + String(rxId, HEX) + ": " + String(rxBuf[0], HEX) + " " + String(rxBuf[1], HEX) + " " + String(rxBuf[2], HEX) + " " + String(rxBuf[3], HEX) + " " + String(rxBuf[4], HEX) + " " + String(rxBuf[5], HEX) + " " + String(rxBuf[6], HEX) + " " + String(rxBuf[7], HEX));
+    // String data = "";
+    // for (int i = 0; i < len; i++) {
+    //   data += String(rxBuf[i], HEX) + " ";
     // }
+
+    // Serial.println("receive: " + String(rxId, HEX) + ": " + data);
 
     checkIgnition();
 
@@ -646,11 +649,12 @@ void processCan(){
 
   if(!digitalRead(CAN1_INT) && CAN1.readMsgBuf(&rxId, &len, rxBuf) == CAN_OK){
 
-    // if (!(rxId == 0x165 || rxId == 0x3e5 || rxId == 0x1a5 || rxId == 0x1e5 || rxId == 0x167 || rxId == 0x1a9 || rxId == 0x1a3 || rxId == 0x164)) {
-    // // 1a9, 1a3, 164, 
-    // // if (rxId == 0x164) {
-    //   Serial.println("receive: " + String(rxId, HEX) + ": " + String(rxBuf[0], HEX) + " " + String(rxBuf[1], HEX) + " " + String(rxBuf[2], HEX) + " " + String(rxBuf[3], HEX) + " " + String(rxBuf[4], HEX) + " " + String(rxBuf[5], HEX) + " " + String(rxBuf[6], HEX) + " " + String(rxBuf[7], HEX));
+    // String data = "";
+    // for (int i = 0; i < len; i++) {
+    //   data += String(rxBuf[i], HEX) + " ";
     // }
+
+    // Serial.println("receive: " + String(rxId, HEX) + ": " + data);
 
     setDynamicVolume();
 
