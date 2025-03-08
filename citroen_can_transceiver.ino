@@ -239,13 +239,24 @@ unsigned long parseAsHex(String value){
   return strtoul (hex, NULL, 16);
 }
 
+int getStringSum(String string) {
+  int sum = 0;
+  for (int i = 0; i < string.length(); i++) {
+    sum += (int) string[i];
+  }
+
+  return sum;
+}
+
 void parseConfig(String config){
   String parts[10];
   stringSplit(parts, config, ';');
 
+  // Serial.println("parsed sum: " + String(getStringSum(parts[1])) + ", received sum: " + String(parts[2]));
+
   // validate
-  if (parts[1].length() != parts[2].toInt()) {
-    Serial.println("wrong config");
+  if (getStringSum(parts[1]) != parts[2].toInt() || getStringSum(parts[1]) == 0) {
+    Serial.println("broken config");
     return;
   }
 
@@ -347,12 +358,12 @@ void getConfig(){
 
     data.trim();
 
-    addDelayedMessage("0x" + String(CONFIG.CAN_PACKAGES[packageIndex].id, HEX) + ";" + data + ";" + String(data.length()));
+    addDelayedMessage("0x" + String(CONFIG.CAN_PACKAGES[packageIndex].id, HEX) + ";" + data + ";" + String(getStringSum(data)));
 
     data = String(CONFIG.AMPLIFIER.useDynamicVolume) + " " + String(CONFIG.AMPLIFIER.maxVolume) + 
       " " + String(CONFIG.AMPLIFIER.volumeOffset);
 
-    addDelayedMessage("0x000;" + data + ";" + String(data.length()));
+    addDelayedMessage("0x000;" + data + ";" + String(getStringSum(data)));
 
     for (int i = 0; i < buttonsCount; i++){
       remapButtonData += CONFIG.WHEEL_BUTTON[i].remap ? CONFIG.WHEEL_BUTTON[i].configValue : 0;
@@ -363,7 +374,7 @@ void getConfig(){
 
     data = String(remapButtonData) + " " + String(longPressButtonData);
 
-    addDelayedMessage("0x001;" + data + ";" + String(String(data).length()));
+    addDelayedMessage("0x001;" + data + ";" + String(getStringSum(data)));
 }
 
 void addDelayedMessage(String message) {
