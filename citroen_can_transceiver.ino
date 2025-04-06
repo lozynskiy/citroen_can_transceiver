@@ -87,9 +87,9 @@ struct PRESSED_BUTTON {
 } PRESSED_BUTTON;
 
 struct AMPLIFIER {
-  bool useDynamicVolume = true;
+  bool useDynamicVolume = false;
   int dynamicVolumeByteNum = 0;
-  int maxVolume = 29;
+  int maxVolume = 28;
   int volumeOffset = 5;
   unsigned long powerOnDelay = 2000;
   unsigned long canVolumeId = 0x1A5;
@@ -116,10 +116,10 @@ struct CONFIG {
     {0x21F, 0, 0x08, false, 3,  false,  33,     1},       // VOL_UP
     {0x21F, 0, 0x04, false, 0,  false,  36,     2},       // VOL_DOWN
     {0x21F, 0, 0x0C, false, 8,  false,  40,     4},       // MUTE
-    {0x21F, 0, 0x40, true,  10, true,   26,     8},       // NEXT
-    {0x21F, 0, 0x80, true,  12, true,   29,     16},      // PREVIOUS
+    {0x21F, 0, 0x40, false, 10, true,   26,     8},       // NEXT
+    {0x21F, 0, 0x80, false, 12, true,   29,     16},      // PREVIOUS
     {0x0A2, 1, 0x10, false, 14, false,  43,     32},      // BACK
-    {0x0A2, 1, 0x08, true,  16, true,   23,     64},      // HOME
+    {0x0A2, 1, 0x08, false, 16, true,   23,     64},      // HOME
     {0x21F, 0, 0x01, true,  2,  false,  48,     128},     // LIST
     {0x0A2, 2, 0x80, false, 21, false,  53,     256},     // PHONE
     {0x0A2, 1, 0x04, true,  4,  false,  NULL,   512},     // SOURCE
@@ -127,10 +127,10 @@ struct CONFIG {
     {0x0A2, 1, 0x20, false, 18, false,  NULL,   2048}     // SCROLL_PRESSED
   };
   CAN_PACKAGE CAN_PACKAGES[dataPackagesCount] = {
-    {0x1A5, 1, {0x14}, 500, 0},                                           // CAN_VOLUME
+    {0x1A5, 1, {AMPLIFIER.maxVolume}, 500, 0},                            // CAN_VOLUME
     {0x165, 4, {0xC0, 0xC0, 0x60, 0x00}, 100, 0},                         // CAN_AMPLIFIER
     // balance: 0; fader: -2; bass: +3; ..: 0; treble: +5; loudness + speed: true; false; preset: linear
-    {0x1E5, 7, {0x3F, 0x3D, 0x42, 0x3F, 0x44, 0x40, 0x40}, 500, 0}       // CAN_EQUALIZER
+    {0x1E5, 7, {0x3F, 0x3f, 0x3f, 0x3F, 0x3f, 0x40, 0x40}, 500, 0}       // CAN_EQUALIZER
   };
   SCROLL SCROLL = {0x0A2, NULL, 0, false, 58, 64, 4096};
   AMPLIFIER AMPLIFIER;
