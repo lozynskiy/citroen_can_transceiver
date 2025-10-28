@@ -34,6 +34,8 @@ Volume:
 #include <avr/sleep.h>
 #include <MCP41_Simple.h>
 
+#include <SoftwareSerial.h>
+
 struct CAN_PACKAGE {
   unsigned long id;
   byte dlc;
@@ -154,6 +156,8 @@ MCP_CAN CAN0(9);                // CAN0 interface usins CS on digital pin 9
 MCP_CAN CAN1(10);               // CAN1 interface using CS on digital pin 10
 MCP41_Simple Potentiometer;
 
+SoftwareSerial headUnitSerial(6, 7); // RX, TX
+
 #define CAN0_INT 3              // define interrupt pin for CAN0 receive buffer
 #define CAN1_INT 2              // define interrupt pin for CAN1 receive buffer
 #define POT_CS 8                // digital potentiometer CS pin
@@ -162,6 +166,7 @@ MCP41_Simple Potentiometer;
 
 void setup(){
   Serial.begin(38400);
+  headUnitSerial.begin(38400);
   Potentiometer.begin(POT_CS);
 
   pinMode(CAN0_INT, INPUT);
@@ -611,6 +616,30 @@ void processIncomingByte (const byte inByte){
   }
 }
 
+void processIncomingByteHeadUnit (const byte inByte){
+  const int serialMaximumInput = 50;
+  static char inputLine [serialMaximumInput];
+  static unsigned int position = 0;
+
+  switch (inByte)
+  {
+    case '\n':
+      inputLine [position] = 0;
+      //processIncomingData (inputLine);
+
+      Serial.println("receive from head unit: " + String(inputLine));
+
+      position = 0;  
+      break;
+    case '\r':
+      break;
+    default:
+      if (position < (serialMaximumInput - 1))
+        inputLine [position++] = inByte;
+      break;
+  }
+}
+
 void setDynamicVolume(){
   if (!CONFIG.AMPLIFIER.useDynamicVolume){
     return;
@@ -654,6 +683,10 @@ void processCan(){
 
   if (Serial.available()){
     processIncomingByte(Serial.read());
+  }
+
+  if (headUnitSerial.available()){
+    processIncomingByteHeadUnit(headUnitSerial.read());
   }
   
   sendDelayedMessage();
